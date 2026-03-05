@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { Pool } = require('pg');
 
-const { generateMagicHelp, hasOpenAI } = require('./lib/openai');
+const { generateMagicHelp, followUpMagicHelp, hasOpenAI } = require('./lib/openai');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -526,6 +526,35 @@ app.post('/api/tickets/:id/magic-help', async (req, res) => {
     await addSystemComment(req.params.id, confidenceNote);
 
     res.json({ suggestion: result.suggestion, confidence: result.confidence, needs_human: result.needs_human, human_reason: result.human_reason });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/tickets/:id/magic-help-followup', async (req, res) => {
+  try {
+    if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
+    const enabled = await cfg('magic_help_enabled');
+    if (enabled !== 'true') return res.status(503).json({ error: 'MagicHelp is not enabled' });
+
+    const { question } = req.body;
+    if (!question || question.trim().length < 5) return res.status(400).json({ error: 'Follow-up question must be at least 5 characters' });
+
+    const ticket = await pool.query(`
+      SELECT t.*, c.name AS category_name
+      FROM tickets t LEFT JOIN ticket_categories c ON c.id = t.category_id
+      WHERE t.id = $1
+    `, [req.params.id]);
+    if (!ticket.rows.length) return res.status(404).json({ error: 'Ticket not found' });
+    if (!ticket.rows[0].ai_suggestion) return res.status(400).json({ error: 'No previous AI response to follow up on' });
+
+    const prompt = await cfg('magic_help_prompt') || '';
+    const result = await followUpMagicHelp(ticket.rows[0], ticket.rows[0].ai_suggestion, question.trim(), prompt);
+
+    // Append follow-up to ai_suggestion with separator
+    const updated = ticket.rows[0].ai_suggestion + '\n\n---\nFollow-up: ' + question.trim() + '\n\n' + result.suggestion;
+    await pool.query('UPDATE tickets SET ai_suggestion = $1, ai_helped = NULL, updated_at = now() WHERE id = $2', [updated, req.params.id]);
+    await addSystemComment(req.params.id, `MagicHelp follow-up (confidence: ${result.confidence})`);
+
+    res.json({ suggestion: result.suggestion, full_suggestion: updated, confidence: result.confidence, needs_human: result.needs_human });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

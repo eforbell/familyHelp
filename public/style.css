@@ -316,6 +316,23 @@ textarea { resize: vertical; min-height: 100px; }
   font-size: 0.85rem;
 }
 
+.magic-help-followup {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.magic-help-followup-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  align-items: center;
+}
+
+.magic-help-followup-form input {
+  flex: 1;
+}
+
 /* ── Comments ──────────────────────────────────────────────────────────── */
 
 .comment {

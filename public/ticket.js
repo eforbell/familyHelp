@@ -159,7 +159,9 @@ function renderMagicHelp() {
   if (!el) return;
 
   if (ticket.ai_suggestion) {
-    const feedbackHtml = ticket.ai_helped === null && ticket.status === 'open' ? `
+    const canFollowUp = ticket.status === 'open' || ticket.status === 'in-progress' || ticket.status === 'waiting';
+
+    const feedbackHtml = ticket.ai_helped === null && (ticket.status === 'open') ? `
       <div class="magic-help-feedback">
         <span>Did this help?</span>
         <button class="btn btn-primary btn-small" onclick="magicHelpFeedback(true)">Yes, resolved!</button>
@@ -171,11 +173,24 @@ function renderMagicHelp() {
       <div class="magic-help-feedback"><span style="color:var(--text-muted);">Human help requested</span></div>
     ` : '';
 
+    const followUpHtml = canFollowUp ? `
+      <div class="magic-help-followup">
+        <div class="magic-help-followup-toggle">
+          <button class="btn btn-secondary btn-small" onclick="toggleFollowUp()">Ask a follow-up</button>
+        </div>
+        <div class="magic-help-followup-form" id="followUpForm" style="display:none;">
+          <input type="text" id="followUpInput" placeholder="I get that, but how do I..." minlength="5">
+          <button class="btn btn-primary btn-small" id="followUpBtn" onclick="submitFollowUp()">Send</button>
+        </div>
+      </div>
+    ` : '';
+
     el.innerHTML = `
       <div class="magic-help-box">
         <div class="magic-help-header">MagicHelp AI</div>
         <div class="magic-help-body">${formatMagicHelp(ticket.ai_suggestion)}</div>
         ${feedbackHtml}
+        ${followUpHtml}
       </div>
     `;
   } else if (ticket.status === 'open') {
@@ -207,6 +222,38 @@ async function askMagicHelp() {
   } catch (err) {
     alert(err.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Ask MagicHelp AI'; }
+  }
+}
+
+function toggleFollowUp() {
+  const form = document.getElementById('followUpForm');
+  if (!form) return;
+  const visible = form.style.display !== 'none';
+  form.style.display = visible ? 'none' : 'flex';
+  if (!visible) document.getElementById('followUpInput').focus();
+}
+
+async function submitFollowUp() {
+  const input = document.getElementById('followUpInput');
+  const btn = document.getElementById('followUpBtn');
+  const question = input.value.trim();
+  if (question.length < 5) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+  try {
+    await api(`../api/tickets/${ticket.id}/magic-help-followup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+    ticket = await api(`../api/tickets/${ticket.id}`);
+    renderMagicHelp();
+    loadComments();
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Send';
   }
 }
 

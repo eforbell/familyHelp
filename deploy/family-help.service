@@ -1,0 +1,15 @@
+[Unit]
+Description=Family HelpDesk
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=forbell
+WorkingDirectory=/home/forbell/workspace/homeApps/familyHelp
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

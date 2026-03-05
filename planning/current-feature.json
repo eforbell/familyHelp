@@ -1,0 +1,16 @@
+{
+  "currentFeature": "feature-1",
+  "featureName": "Core Helpdesk",
+  "prdPath": "planning/features/feature-1-prd.json",
+  "summaryPath": "planning/features/feature-1-summary.md",
+  "branch": "main",
+  "status": "planning",
+  "stories": [],
+  "completedFeatures": [],
+  "futureEnhancements": [
+    "Feature #1: Core helpdesk (tickets, members, views, assignment)",
+    "Feature #2: MagicHelp AI first-tier support",
+    "Feature #3: Skills & onboarding interview",
+    "Feature #4: Attachments & screenshots"
+  ]
+}

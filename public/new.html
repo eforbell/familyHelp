@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Help — Family HelpDesk</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk</h1>
+    <div class="header-right">
+      <nav>
+        <a href="./">Dashboard</a>
+        <a href="board">Board</a>
+        <a href="new" class="active">Get Help</a>
+        <a href="settings">Settings</a>
+      </nav>
+      <div class="member-badge" id="memberBadge"></div>
+    </div>
+  </header>
+
+  <div class="container">
+    <h2 style="margin-bottom:1rem;">What do you need help with?</h2>
+
+    <form id="ticketForm" onsubmit="return submitTicket(event)">
+      <div class="form-group">
+        <label for="category">Category</label>
+        <select id="category" required></select>
+        <div class="form-hint" id="categoryGuidance"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="title">Short summary</label>
+        <input type="text" id="title" placeholder="e.g. Wifi keeps disconnecting on my laptop" required minlength="10" maxlength="200">
+        <div class="char-count" id="titleCount">0 / 10 min</div>
+      </div>
+
+      <div class="form-group">
+        <label for="description">Describe the problem in detail</label>
+        <textarea id="description" placeholder="What's happening? What did you expect? What have you tried?" required minlength="30" rows="5"></textarea>
+        <div class="char-count" id="descCount">0 / 30 min</div>
+      </div>
+
+      <div class="form-group">
+        <label>Priority</label>
+        <div class="priority-group">
+          <div class="priority-option">
+            <input type="radio" name="priority" id="p-urgent" value="urgent">
+            <label for="p-urgent">Urgent</label>
+          </div>
+          <div class="priority-option">
+            <input type="radio" name="priority" id="p-normal" value="normal" checked>
+            <label for="p-normal">Normal</label>
+          </div>
+          <div class="priority-option">
+            <input type="radio" name="priority" id="p-longterm" value="long-term">
+            <label for="p-longterm">Long-term</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="linkUrl">Reference link (optional)</label>
+        <input type="url" id="linkUrl" placeholder="https://...">
+      </div>
+
+      <div id="formError" class="form-error" style="margin-bottom:0.8rem;"></div>
+
+      <button type="submit" class="btn btn-primary" id="submitBtn">Submit Request</button>
+      <a href="./" class="btn btn-secondary" style="margin-left:0.5rem;">Cancel</a>
+    </form>
+  </div>
+
+  <script src="new.js"></script>
+</body>
+</html>

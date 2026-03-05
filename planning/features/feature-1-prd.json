@@ -1,0 +1,151 @@
+{
+  "branchName": "main",
+  "projectName": "Core Helpdesk",
+  "description": "Foundation of familyHelp: ticket CRUD, family member identity, dashboard views, comment threads, assignment workflow, and PIN-protected settings. Everything needed for the family to file and resolve help requests.",
+  "timing": {
+    "draftedOn": "2026-03-05",
+    "plannedEarliestExecution": "2026-03-05",
+    "gatingCondition": "None. Can proceed immediately."
+  },
+  "principles": [
+    "Force real detail in tickets -- no '3-word' requests",
+    "Parents are admins, kids are participants",
+    "Simple status workflow, not enterprise ITIL",
+    "Same tech stack and patterns as familyDinner and familyPlan",
+    "Relative paths everywhere for nginx /help/ subpath"
+  ],
+  "techStack": {
+    "language": "Node.js + vanilla JS",
+    "runtime": "Express",
+    "database": "PostgreSQL",
+    "port": 3002,
+    "nginxPath": "/help/",
+    "accentColor": "#4caf50"
+  },
+  "userStories": [
+    {
+      "id": "HELP-001",
+      "title": "Member identity and dashboard",
+      "acceptanceCriteria": [
+        "First visit shows member picker, selection persists in localStorage (fh_member)",
+        "Dashboard shows two lists: tickets I filed, tickets assigned to me",
+        "Badge counts show open/actionable ticket counts",
+        "Switch member option available"
+      ],
+      "priority": 1,
+      "estimatedLines": "+350",
+      "testStrategy": "Manual browser verification",
+      "passes": false
+    },
+    {
+      "id": "HELP-002",
+      "title": "Create ticket with enforced detail",
+      "acceptanceCriteria": [
+        "Title requires minimum 10 characters",
+        "Description requires minimum 30 characters",
+        "Category dropdown with predefined categories",
+        "Priority selector: urgent, normal, long-term",
+        "Optional link URL field",
+        "Category-specific guidance text shown",
+        "Client-side and server-side validation"
+      ],
+      "priority": 1,
+      "estimatedLines": "+300",
+      "testStrategy": "Manual form testing with validation edge cases",
+      "passes": false
+    },
+    {
+      "id": "HELP-003",
+      "title": "Ticket detail and comment thread",
+      "acceptanceCriteria": [
+        "Full ticket metadata displayed with status badge",
+        "Comment thread in chronological order",
+        "Add comment form with minimum 10 char requirement",
+        "Comments show author name and timestamp"
+      ],
+      "priority": 1,
+      "estimatedLines": "+250",
+      "testStrategy": "Manual browser verification",
+      "passes": false
+    },
+    {
+      "id": "HELP-004",
+      "title": "Assignment and status workflow",
+      "acceptanceCriteria": [
+        "Parents can assign any ticket to any family member",
+        "Kids can self-assign unassigned tickets",
+        "Status transitions enforced: open -> in-progress -> waiting/resolved",
+        "Resolved tickets can be reopened",
+        "Assignment and status changes logged as system comments"
+      ],
+      "priority": 2,
+      "estimatedLines": "+200",
+      "testStrategy": "Manual workflow testing with parent and kid roles",
+      "passes": false
+    },
+    {
+      "id": "HELP-005",
+      "title": "Board view with filters",
+      "acceptanceCriteria": [
+        "Tickets grouped by status columns",
+        "Filter by assignee, category, priority",
+        "Parents see all tickets, kids see only their own",
+        "Click ticket to navigate to detail view"
+      ],
+      "priority": 2,
+      "estimatedLines": "+250",
+      "testStrategy": "Manual browser testing with different member roles",
+      "passes": false
+    },
+    {
+      "id": "HELP-006",
+      "title": "Settings with PIN protection",
+      "acceptanceCriteria": [
+        "PIN unlock flow (reuse familyPlan pattern)",
+        "Manage ticket categories (add/remove/rename)",
+        "View family members",
+        "Placeholder section for AI MagicHelp config"
+      ],
+      "priority": 3,
+      "estimatedLines": "+300",
+      "testStrategy": "Manual settings flow verification",
+      "passes": false
+    }
+  ],
+  "riskAssessment": {
+    "high": [],
+    "medium": [
+      "Ticket detail page routing with vanilla JS (SPA-style or multi-page)",
+      "Comment thread UX on mobile needs care"
+    ],
+    "low": [
+      "Scope is well-defined, no external dependencies",
+      "Patterns proven in two prior apps"
+    ]
+  },
+  "metrics": {
+    "estimatedTotalLines": "+1650",
+    "storiesCount": 6,
+    "filesCreated": [
+      "package.json",
+      ".env.example",
+      "server.js",
+      "lib/date-utils.js",
+      "db/schema.sql",
+      "db/seed.sql",
+      "public/index.html",
+      "public/app.js",
+      "public/new.html",
+      "public/new.js",
+      "public/ticket.html",
+      "public/ticket.js",
+      "public/board.html",
+      "public/board.js",
+      "public/settings.html",
+      "public/settings.js",
+      "public/style.css",
+      "public/favicon.svg",
+      "deploy/family-help.service"
+    ]
+  }
+}

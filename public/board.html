@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Board — Family HelpDesk</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk</h1>
+    <div class="header-right">
+      <nav>
+        <a href="./">Dashboard</a>
+        <a href="board" class="active">Board</a>
+        <a href="new">Get Help</a>
+        <a href="settings">Settings</a>
+      </nav>
+      <div class="member-badge" id="memberBadge"></div>
+    </div>
+  </header>
+
+  <div class="container-wide">
+    <div class="filters" id="filters">
+      <select id="filterAssignee"><option value="">All assignees</option></select>
+      <select id="filterCategory"><option value="">All categories</option></select>
+      <select id="filterPriority">
+        <option value="">All priorities</option>
+        <option value="urgent">Urgent</option>
+        <option value="normal">Normal</option>
+        <option value="long-term">Long-term</option>
+      </select>
+    </div>
+
+    <div class="board" id="board"></div>
+  </div>
+
+  <script src="board.js"></script>
+</body>
+</html>

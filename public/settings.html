@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Family HelpDesk</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk</h1>
+    <div class="header-right">
+      <nav>
+        <a href="./">Dashboard</a>
+        <a href="board">Board</a>
+        <a href="new">Get Help</a>
+        <a href="settings" class="active">Settings</a>
+      </nav>
+      <div class="member-badge" id="memberBadge"></div>
+    </div>
+  </header>
+
+  <!-- PIN screen -->
+  <div class="pin-screen" id="pinScreen" style="display:none;">
+    <h2>Settings are locked</h2>
+    <input type="password" id="pinInput" placeholder="PIN" maxlength="20" autocomplete="off">
+    <button class="btn btn-primary" onclick="unlock()">Unlock</button>
+    <div class="form-error" id="pinError" style="margin-top:0.5rem;"></div>
+  </div>
+
+  <!-- PIN setup (first time) -->
+  <div class="pin-screen" id="pinSetup" style="display:none;">
+    <h2>Set a Settings PIN</h2>
+    <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.85rem;">This PIN protects admin settings.</p>
+    <input type="password" id="newPinInput" placeholder="Choose a PIN" maxlength="20" autocomplete="off">
+    <button class="btn btn-primary" onclick="setupPin()">Set PIN</button>
+    <div class="form-error" id="setupError" style="margin-top:0.5rem;"></div>
+  </div>
+
+  <!-- Settings content -->
+  <div class="container" id="settingsContent" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h2>Settings</h2>
+      <button class="btn btn-secondary btn-small" onclick="lock()">Lock</button>
+    </div>
+
+    <div class="settings-section">
+      <h3>Ticket Categories</h3>
+      <div id="categoryList"></div>
+      <div style="margin-top:0.8rem; display:flex; gap:0.5rem;">
+        <input type="text" id="newCatName" placeholder="New category name" style="flex:1;">
+        <button class="btn btn-primary btn-small" onclick="addCategory()">Add</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Family Members</h3>
+      <div id="memberList"></div>
+    </div>
+
+    <div class="settings-section">
+      <h3>MagicHelp AI (coming soon)</h3>
+      <p style="color:var(--text-muted); font-size:0.85rem;">AI-powered first-tier support will be configured here.</p>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

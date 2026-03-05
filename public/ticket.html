@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket — Family HelpDesk</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk</h1>
+    <div class="header-right">
+      <nav>
+        <a href="../">Dashboard</a>
+        <a href="../board">Board</a>
+        <a href="../new">Get Help</a>
+        <a href="../settings">Settings</a>
+      </nav>
+      <div class="member-badge" id="memberBadge"></div>
+    </div>
+  </header>
+
+  <div class="container" id="main">
+    <div class="ticket-header" id="ticketHeader"></div>
+    <div class="ticket-body" id="ticketBody"></div>
+
+    <div id="ticketLink" style="margin-bottom:1rem;"></div>
+
+    <div class="ticket-actions" id="ticketActions"></div>
+
+    <div class="section-title">Comments</div>
+    <div id="commentList"></div>
+
+    <div style="margin-top:1rem;">
+      <form id="commentForm" onsubmit="return addComment(event)">
+        <div class="form-group">
+          <textarea id="commentText" placeholder="Add a comment (min 10 characters)..." rows="3" minlength="10"></textarea>
+          <div class="char-count" id="commentCount">0 / 10 min</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-small" id="commentBtn">Add Comment</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="../ticket.js"></script>
+</body>
+</html>

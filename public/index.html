@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family HelpDesk</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk</h1>
+    <div class="header-right">
+      <nav>
+        <a href="./" class="active">Dashboard</a>
+        <a href="board">Board</a>
+        <a href="new">Get Help</a>
+        <a href="settings">Settings</a>
+      </nav>
+      <div class="member-badge" id="memberBadge" onclick="openMemberPicker()"></div>
+    </div>
+  </header>
+
+  <div class="container" id="main">
+    <div class="section-title">Assigned to Me <span class="count" id="assignedCount">0</span></div>
+    <div id="assignedList"></div>
+
+    <div class="section-title">My Requests <span class="count" id="myCount">0</span></div>
+    <div id="myList"></div>
+
+    <div style="margin-top:1.5rem; text-align:center;">
+      <a href="new" class="btn btn-primary">Get Help</a>
+    </div>
+  </div>
+
+  <div class="overlay" id="memberPicker" style="display:none;">
+    <div class="overlay-box">
+      <h2>Who are you?</h2>
+      <div class="member-grid" id="memberGrid"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

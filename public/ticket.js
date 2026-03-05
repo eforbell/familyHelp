@@ -15,6 +15,14 @@ async function init() {
 
   document.getElementById('commentText').addEventListener('input', updateCommentCount);
 
+  // Drag-and-drop setup
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+
   const ticketId = getTicketId();
   const [t, m] = await Promise.all([
     api(`../api/tickets/${ticketId}`),
@@ -25,6 +33,7 @@ async function init() {
 
   renderTicket();
   loadComments();
+  loadAttachments();
 }
 
 function renderTicket() {
@@ -270,6 +279,77 @@ async function magicHelpFeedback(helped) {
   } catch (err) {
     alert(err.message);
   }
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────
+
+async function loadAttachments() {
+  const attachments = await api(`../api/tickets/${ticket.id}/attachments`);
+  document.getElementById('attachmentCount').textContent = attachments.length;
+  const el = document.getElementById('attachmentList');
+  if (!attachments.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `<div class="attachment-grid">${attachments.map(a => `
+    <div class="attachment-item">
+      <a href="../uploads/${esc(a.filename)}" target="_blank" rel="noopener">
+        <img src="../uploads/${esc(a.filename)}" alt="${esc(a.original_name)}" loading="lazy">
+      </a>
+      <div class="attachment-meta">
+        <span>${esc(a.original_name)}</span>
+        <span class="attachment-info">${formatSize(a.size_bytes)} &middot; ${a.uploader_name || 'Unknown'}</span>
+      </div>
+      ${currentMember.role === 'parent' ? `<button class="btn btn-danger btn-small" onclick="deleteAttachment(${a.id})" style="padding:0.15rem 0.4rem; font-size:0.7rem;">Remove</button>` : ''}
+    </div>
+  `).join('')}</div>`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function handleFiles(files) {
+  const statusEl = document.getElementById('uploadStatus');
+  for (const file of files) {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+      statusEl.textContent = `${file.name}: not a supported image type`;
+      continue;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      statusEl.textContent = `${file.name}: too large (max 10MB)`;
+      continue;
+    }
+    statusEl.textContent = `Uploading ${file.name}...`;
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('uploaded_by', currentMember.id);
+
+      const res = await fetch(`../api/tickets/${ticket.id}/attachments`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || res.statusText);
+      }
+      statusEl.textContent = `${file.name} uploaded`;
+      setTimeout(() => { if (statusEl.textContent.includes('uploaded')) statusEl.textContent = ''; }, 3000);
+      loadAttachments();
+      loadComments();
+    } catch (err) {
+      statusEl.textContent = `${file.name}: ${err.message}`;
+    }
+  }
+}
+
+async function deleteAttachment(id) {
+  if (!confirm('Remove this attachment?')) return;
+  try {
+    await api(`../api/attachments/${id}`, { method: 'DELETE' });
+    loadAttachments();
+    loadComments();
+  } catch (err) { alert(err.message); }
 }
 
 // ── Comments ──────────────────────────────────────────────────────────────

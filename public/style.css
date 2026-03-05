@@ -521,6 +521,82 @@ textarea { resize: vertical; min-height: 100px; }
 .cat-row:last-child { border-bottom: none; }
 .cat-row .cat-name { flex: 1; }
 
+/* ── Attachments ───────────────────────────────────────────────────────── */
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  margin-bottom: 0.5rem;
+}
+
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(76, 175, 80, 0.05);
+}
+
+.drop-zone-text {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.drop-zone-browse {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.drop-zone-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+}
+
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.attachment-item {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.attachment-item img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-meta {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.attachment-meta span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-info {
+  color: var(--text-muted);
+}
+
+.attachment-item .btn {
+  width: 100%;
+  border-radius: 0;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {

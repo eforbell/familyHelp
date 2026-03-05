@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const { Pool } = require('pg');
 
 const { generateMagicHelp, followUpMagicHelp, hasOpenAI } = require('./lib/openai');
@@ -12,9 +13,16 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const SETTINGS_SESSION_COOKIE = 'fh_settings_session';
 const SETTINGS_SESSION_MINUTES = 480; // 8 hours
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+// Ensure uploads dir exists
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ── Config helpers ──────────────────────────────────────────────────────────
 
@@ -569,6 +577,128 @@ app.post('/api/tickets/:id/magic-help-feedback', async (req, res) => {
     } else {
       await addSystemComment(req.params.id, 'MagicHelp was not sufficient -- needs human help');
     }
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Attachments ─────────────────────────────────────────────────────────────
+
+function parseMultipart(req) {
+  return new Promise((resolve, reject) => {
+    const contentType = req.headers['content-type'] || '';
+    const match = contentType.match(/boundary=(?:"([^"]+)"|([^\s;]+))/);
+    if (!match) return reject(new Error('No multipart boundary'));
+    const boundary = match[1] || match[2];
+
+    const chunks = [];
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > MAX_FILE_SIZE + 1024 * 10) { // file + field overhead
+        req.destroy();
+        return reject(new Error(`File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`));
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      const parts = {};
+      const sep = Buffer.from('--' + boundary);
+
+      let pos = 0;
+      while (pos < buf.length) {
+        const start = buf.indexOf(sep, pos);
+        if (start === -1) break;
+        const nextStart = buf.indexOf(sep, start + sep.length + 2);
+        if (nextStart === -1) break;
+
+        const partBuf = buf.slice(start + sep.length + 2, nextStart);
+        const headerEnd = partBuf.indexOf('\r\n\r\n');
+        if (headerEnd === -1) { pos = nextStart; continue; }
+
+        const headers = partBuf.slice(0, headerEnd).toString('utf8');
+        const body = partBuf.slice(headerEnd + 4, partBuf.length - 2); // trim trailing \r\n
+
+        const nameMatch = headers.match(/name="([^"]+)"/);
+        const filenameMatch = headers.match(/filename="([^"]+)"/);
+        const typeMatch = headers.match(/Content-Type:\s*(\S+)/i);
+
+        if (nameMatch) {
+          if (filenameMatch) {
+            parts[nameMatch[1]] = { filename: filenameMatch[1], type: typeMatch?.[1] || 'application/octet-stream', data: body };
+          } else {
+            parts[nameMatch[1]] = body.toString('utf8');
+          }
+        }
+        pos = nextStart;
+      }
+      resolve(parts);
+    });
+    req.on('error', reject);
+  });
+}
+
+app.post('/api/tickets/:id/attachments', async (req, res) => {
+  try {
+    const parts = await parseMultipart(req);
+    const file = parts.file;
+    const uploadedBy = parts.uploaded_by;
+
+    if (!file || !file.data || !file.data.length) return res.status(400).json({ error: 'No file provided' });
+    if (!uploadedBy) return res.status(400).json({ error: 'uploaded_by is required' });
+    if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, or GIF.` });
+    if (file.data.length > MAX_FILE_SIZE) return res.status(400).json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` });
+
+    // Verify ticket exists
+    const t = await pool.query('SELECT id FROM tickets WHERE id=$1', [req.params.id]);
+    if (!t.rows.length) return res.status(404).json({ error: 'Ticket not found' });
+
+    const ext = path.extname(file.filename).toLowerCase() || '.bin';
+    const uuid = crypto.randomUUID();
+    const filename = uuid + ext;
+    const filePath = path.join(UPLOADS_DIR, filename);
+
+    fs.writeFileSync(filePath, file.data);
+
+    const r = await pool.query(
+      `INSERT INTO ticket_attachments (ticket_id, filename, original_name, mime_type, size_bytes, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, filename, file.filename, file.type, file.data.length, uploadedBy]
+    );
+    await touchTicket(req.params.id);
+
+    const uploader = await pool.query('SELECT name FROM family_members WHERE id=$1', [uploadedBy]);
+    await addSystemComment(req.params.id, `${uploader.rows[0]?.name || 'Someone'} attached ${file.filename}`);
+
+    res.status(201).json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/tickets/:id/attachments', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT ta.*, fm.name AS uploader_name
+      FROM ticket_attachments ta
+      LEFT JOIN family_members fm ON fm.id = ta.uploaded_by
+      WHERE ta.ticket_id = $1
+      ORDER BY ta.created_at ASC
+    `, [req.params.id]);
+    res.json(r.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/attachments/:id', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM ticket_attachments WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'Attachment not found' });
+
+    const att = r.rows[0];
+    const filePath = path.join(UPLOADS_DIR, att.filename);
+    try { fs.unlinkSync(filePath); } catch {}
+
+    await pool.query('DELETE FROM ticket_attachments WHERE id=$1', [req.params.id]);
+    await addSystemComment(att.ticket_id, `Attachment removed: ${att.original_name}`);
 
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

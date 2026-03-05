@@ -49,6 +49,7 @@ function renderTicket() {
     linkEl.innerHTML = '';
   }
 
+  renderMagicHelp();
   renderActions();
 }
 
@@ -149,6 +150,79 @@ async function setPriority(priority) {
   });
   renderTicket();
   loadComments();
+}
+
+// ── MagicHelp ─────────────────────────────────────────────────────────────
+
+function renderMagicHelp() {
+  const el = document.getElementById('magicHelp');
+  if (!el) return;
+
+  if (ticket.ai_suggestion) {
+    const feedbackHtml = ticket.ai_helped === null && ticket.status === 'open' ? `
+      <div class="magic-help-feedback">
+        <span>Did this help?</span>
+        <button class="btn btn-primary btn-small" onclick="magicHelpFeedback(true)">Yes, resolved!</button>
+        <button class="btn btn-secondary btn-small" onclick="magicHelpFeedback(false)">I still need help</button>
+      </div>
+    ` : ticket.ai_helped === true ? `
+      <div class="magic-help-feedback"><span style="color:var(--accent);">Marked as helpful</span></div>
+    ` : ticket.ai_helped === false ? `
+      <div class="magic-help-feedback"><span style="color:var(--text-muted);">Human help requested</span></div>
+    ` : '';
+
+    el.innerHTML = `
+      <div class="magic-help-box">
+        <div class="magic-help-header">MagicHelp AI</div>
+        <div class="magic-help-body">${formatMagicHelp(ticket.ai_suggestion)}</div>
+        ${feedbackHtml}
+      </div>
+    `;
+  } else if (ticket.status === 'open') {
+    el.innerHTML = `
+      <button class="btn btn-secondary btn-small" id="askMagicBtn" onclick="askMagicHelp()">Ask MagicHelp AI</button>
+    `;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+function formatMagicHelp(text) {
+  // Convert markdown-ish numbered lists and line breaks to HTML
+  return esc(text).replace(/\n/g, '<br>');
+}
+
+async function askMagicHelp() {
+  const btn = document.getElementById('askMagicBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Thinking...'; }
+  try {
+    const result = await api(`../api/tickets/${ticket.id}/magic-help`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    // Refresh ticket to get updated ai_suggestion
+    ticket = await api(`../api/tickets/${ticket.id}`);
+    renderMagicHelp();
+    loadComments();
+  } catch (err) {
+    alert(err.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Ask MagicHelp AI'; }
+  }
+}
+
+async function magicHelpFeedback(helped) {
+  try {
+    await api(`../api/tickets/${ticket.id}/magic-help-feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ helped })
+    });
+    ticket = await api(`../api/tickets/${ticket.id}`);
+    renderTicket();
+    loadComments();
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 // ── Comments ──────────────────────────────────────────────────────────────

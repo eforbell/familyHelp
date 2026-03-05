@@ -1,1 +1,3 @@
 2026-03-05  Planning phase started. Defining feature breakdown and architecture.
+2026-03-05  Feature 1 (Core Helpdesk) implemented and deployed to erebor.
+2026-03-05  Feature 2 (MagicHelp AI) implemented. Pending manual testing with OPENAI_API_KEY.

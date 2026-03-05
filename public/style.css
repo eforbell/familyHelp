@@ -281,6 +281,41 @@ textarea { resize: vertical; min-height: 100px; }
   margin-bottom: 1.5rem;
 }
 
+/* ── MagicHelp ─────────────────────────────────────────────────────────── */
+
+.magic-help-box {
+  background: #1a2e1a;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+}
+
+.magic-help-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 0.6rem;
+}
+
+.magic-help-body {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.magic-help-feedback {
+  margin-top: 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
 /* ── Comments ──────────────────────────────────────────────────────────── */
 
 .comment {

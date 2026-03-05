@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const path = require('path');
 const { Pool } = require('pg');
 
+const { generateMagicHelp, hasOpenAI } = require('./lib/openai');
+
 const app = express();
 const PORT = process.env.PORT || 3002;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -222,6 +224,9 @@ app.post('/api/tickets', async (req, res) => {
     const ticket = r.rows[0];
     const creator = await pool.query('SELECT name FROM family_members WHERE id=$1', [created_by]);
     await addSystemComment(ticket.id, `Ticket created by ${creator.rows[0]?.name || 'Unknown'}`);
+
+    // Fire-and-forget MagicHelp for AI-eligible categories
+    tryAutoMagicHelp(ticket).catch(err => console.error('MagicHelp auto error:', err.message));
 
     res.status(201).json(ticket);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -467,6 +472,75 @@ app.delete('/api/categories/:id', requireSettingsAuth, async (req, res) => {
     const used = await pool.query('SELECT COUNT(*)::int AS cnt FROM tickets WHERE category_id = $1', [req.params.id]);
     if (used.rows[0].cnt > 0) return res.status(409).json({ error: `Category is used by ${used.rows[0].cnt} ticket(s). Reassign them first.` });
     await pool.query('DELETE FROM ticket_categories WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── MagicHelp AI ────────────────────────────────────────────────────────────
+
+async function tryAutoMagicHelp(ticket) {
+  if (!hasOpenAI()) return;
+  const enabled = await cfg('magic_help_enabled');
+  if (enabled !== 'true') return;
+  if (!ticket.category_id) return;
+
+  const cat = await pool.query('SELECT name, ai_eligible FROM ticket_categories WHERE id=$1', [ticket.category_id]);
+  if (!cat.rows[0]?.ai_eligible) return;
+
+  const prompt = await cfg('magic_help_prompt') || '';
+  const result = await generateMagicHelp({
+    title: ticket.title,
+    description: ticket.description,
+    category_name: cat.rows[0].name,
+  }, prompt);
+
+  await pool.query('UPDATE tickets SET ai_suggestion = $1, updated_at = now() WHERE id = $2', [result.suggestion, ticket.id]);
+
+  const confidenceNote = result.needs_human
+    ? `MagicHelp responded (confidence: ${result.confidence}) but recommends human help: ${result.human_reason}`
+    : `MagicHelp responded (confidence: ${result.confidence})`;
+  await addSystemComment(ticket.id, confidenceNote);
+}
+
+app.post('/api/tickets/:id/magic-help', async (req, res) => {
+  try {
+    if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
+    const enabled = await cfg('magic_help_enabled');
+    if (enabled !== 'true') return res.status(503).json({ error: 'MagicHelp is not enabled. Enable it in Settings.' });
+
+    const ticket = await pool.query(`
+      SELECT t.*, c.name AS category_name
+      FROM tickets t LEFT JOIN ticket_categories c ON c.id = t.category_id
+      WHERE t.id = $1
+    `, [req.params.id]);
+    if (!ticket.rows.length) return res.status(404).json({ error: 'Ticket not found' });
+
+    const prompt = await cfg('magic_help_prompt') || '';
+    const result = await generateMagicHelp(ticket.rows[0], prompt);
+
+    await pool.query('UPDATE tickets SET ai_suggestion = $1, ai_helped = NULL, updated_at = now() WHERE id = $2', [result.suggestion, req.params.id]);
+
+    const confidenceNote = result.needs_human
+      ? `MagicHelp responded (confidence: ${result.confidence}) but recommends human help: ${result.human_reason}`
+      : `MagicHelp responded (confidence: ${result.confidence})`;
+    await addSystemComment(req.params.id, confidenceNote);
+
+    res.json({ suggestion: result.suggestion, confidence: result.confidence, needs_human: result.needs_human, human_reason: result.human_reason });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/tickets/:id/magic-help-feedback', async (req, res) => {
+  try {
+    const { helped } = req.body;
+    await pool.query('UPDATE tickets SET ai_helped = $1, updated_at = now() WHERE id = $2', [helped, req.params.id]);
+
+    if (helped) {
+      await pool.query("UPDATE tickets SET status = 'resolved', resolved_at = COALESCE(resolved_at, now()), updated_at = now() WHERE id = $1 AND status = 'open'", [req.params.id]);
+      await addSystemComment(req.params.id, 'MagicHelp resolved this ticket');
+    } else {
+      await addSystemComment(req.params.id, 'MagicHelp was not sufficient -- needs human help');
+    }
+
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -1,0 +1,46 @@
+{
+  "branchName": "main",
+  "projectName": "MagicHelp AI First-Tier Support",
+  "description": "AI-powered automatic response for tickets in AI-eligible categories. Uses OpenAI structured JSON output to provide troubleshooting steps, homework guidance, and practical advice. Includes feedback loop (helped/not helped) and manual trigger.",
+  "timing": {
+    "draftedOn": "2026-03-05",
+    "implementedOn": "2026-03-05"
+  },
+  "userStories": [
+    {
+      "id": "AI-001",
+      "title": "Auto MagicHelp on ticket creation for AI-eligible categories",
+      "status": "implemented",
+      "passes": false
+    },
+    {
+      "id": "AI-002",
+      "title": "Manual Ask MagicHelp button on ticket detail",
+      "status": "implemented",
+      "passes": false
+    },
+    {
+      "id": "AI-003",
+      "title": "Feedback: This helped / I still need help",
+      "status": "implemented",
+      "passes": false
+    },
+    {
+      "id": "AI-004",
+      "title": "Settings: enable/disable, prompt editing, AI-eligible toggle per category",
+      "status": "implemented",
+      "passes": false
+    }
+  ],
+  "metrics": {
+    "filesCreated": ["lib/openai.js"],
+    "filesModified": [
+      "server.js",
+      "public/ticket.html",
+      "public/ticket.js",
+      "public/settings.html",
+      "public/settings.js",
+      "public/style.css"
+    ]
+  }
+}

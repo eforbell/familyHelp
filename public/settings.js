@@ -64,6 +64,7 @@ async function showSettings() {
   document.getElementById('settingsContent').style.display = 'block';
   loadCategories();
   loadMembers();
+  loadMagicHelpSettings();
 }
 
 async function loadCategories() {
@@ -72,7 +73,10 @@ async function loadCategories() {
   el.innerHTML = cats.map(c => `
     <div class="cat-row">
       <span class="cat-name">${esc(c.name)}</span>
-      <span style="color:var(--text-muted); font-size:0.8rem;">${c.ai_eligible ? 'AI eligible' : ''}</span>
+      <label style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:0.3rem;">
+        <input type="checkbox" ${c.ai_eligible ? 'checked' : ''} onchange="toggleAiEligible(${c.id}, this.checked)">
+        AI
+      </label>
       <button class="btn btn-danger btn-small" onclick="deleteCategory(${c.id})" style="padding:0.2rem 0.4rem; font-size:0.75rem;">Remove</button>
     </div>
   `).join('');
@@ -92,6 +96,16 @@ async function addCategory() {
   } catch (err) { alert(err.message); }
 }
 
+async function toggleAiEligible(id, enabled) {
+  try {
+    await api(`api/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ai_eligible: enabled })
+    });
+  } catch (err) { alert(err.message); loadCategories(); }
+}
+
 async function deleteCategory(id) {
   if (!confirm('Remove this category?')) return;
   try {
@@ -109,6 +123,42 @@ async function loadMembers() {
       <span style="color:var(--text-muted); font-size:0.8rem;">${m.role}</span>
     </div>
   `).join('');
+}
+
+async function loadMagicHelpSettings() {
+  try {
+    const config = await api('api/config');
+    document.getElementById('magicHelpEnabled').checked = config.magic_help_enabled === 'true';
+    document.getElementById('magicHelpPrompt').value = config.magic_help_prompt || '';
+  } catch (err) {
+    console.error('Failed to load AI settings:', err.message);
+  }
+}
+
+async function saveMagicHelpSettings() {
+  const statusEl = document.getElementById('aiSaveStatus');
+  statusEl.textContent = 'Saving...';
+  try {
+    const enabled = document.getElementById('magicHelpEnabled').checked;
+    const prompt = document.getElementById('magicHelpPrompt').value.trim();
+    await Promise.all([
+      api('api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'magic_help_enabled', value: enabled ? 'true' : 'false' })
+      }),
+      api('api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'magic_help_prompt', value: prompt })
+      })
+    ]);
+    statusEl.textContent = 'Saved';
+    setTimeout(() => statusEl.textContent = '', 2000);
+  } catch (err) {
+    statusEl.textContent = '';
+    alert(err.message);
+  }
 }
 
 async function api(url, opts) {

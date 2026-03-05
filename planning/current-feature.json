@@ -1,15 +1,27 @@
 {
-  "currentFeature": "feature-1",
-  "featureName": "Core Helpdesk",
-  "prdPath": "planning/features/feature-1-prd.json",
-  "summaryPath": "planning/features/feature-1-summary.md",
+  "currentFeature": "feature-2",
+  "featureName": "MagicHelp AI First-Tier Support",
+  "prdPath": "planning/features/feature-2-prd.json",
+  "summaryPath": "planning/features/feature-2-summary.md",
   "branch": "main",
-  "status": "planning",
-  "stories": [],
-  "completedFeatures": [],
+  "status": "implemented_pending_manual_test",
+  "stories": [
+    { "id": "AI-001", "title": "Auto MagicHelp on ticket creation", "status": "implemented_pending_manual_test" },
+    { "id": "AI-002", "title": "Manual Ask MagicHelp button", "status": "implemented_pending_manual_test" },
+    { "id": "AI-003", "title": "Feedback: helped / still need help", "status": "implemented_pending_manual_test" },
+    { "id": "AI-004", "title": "Settings: enable, prompt, AI-eligible toggle", "status": "implemented_pending_manual_test" }
+  ],
+  "completedFeatures": [
+    {
+      "featureId": "feature-1",
+      "featureName": "Core Helpdesk",
+      "branch": "main",
+      "mergedDate": "2026-03-05",
+      "stories": 6,
+      "notes": "Ticket CRUD, comments, assignment, board view, dashboard, PIN-protected settings."
+    }
+  ],
   "futureEnhancements": [
-    "Feature #1: Core helpdesk (tickets, members, views, assignment)",
-    "Feature #2: MagicHelp AI first-tier support",
     "Feature #3: Skills & onboarding interview",
     "Feature #4: Attachments & screenshots"
   ]

@@ -1,28 +1,31 @@
 {
-  "currentFeature": "feature-2",
-  "featureName": "MagicHelp AI First-Tier Support",
-  "prdPath": "planning/features/feature-2-prd.json",
-  "summaryPath": "planning/features/feature-2-summary.md",
-  "branch": "main",
-  "status": "implemented_pending_manual_test",
-  "stories": [
-    { "id": "AI-001", "title": "Auto MagicHelp on ticket creation", "status": "implemented_pending_manual_test" },
-    { "id": "AI-002", "title": "Manual Ask MagicHelp button", "status": "implemented_pending_manual_test" },
-    { "id": "AI-003", "title": "Feedback: helped / still need help", "status": "implemented_pending_manual_test" },
-    { "id": "AI-004", "title": "Settings: enable, prompt, AI-eligible toggle", "status": "implemented_pending_manual_test" }
-  ],
+  "currentFeature": null,
+  "status": "idle",
   "completedFeatures": [
     {
       "featureId": "feature-1",
       "featureName": "Core Helpdesk",
-      "branch": "main",
       "mergedDate": "2026-03-05",
-      "stories": 6,
       "notes": "Ticket CRUD, comments, assignment, board view, dashboard, PIN-protected settings."
+    },
+    {
+      "featureId": "feature-2",
+      "featureName": "MagicHelp AI First-Tier Support",
+      "mergedDate": "2026-03-05",
+      "notes": "Auto AI response on ticket creation, manual trigger, feedback loop, follow-up conversation, settings config."
+    },
+    {
+      "featureId": "feature-4",
+      "featureName": "Attachments & Screenshots",
+      "mergedDate": "2026-03-05",
+      "notes": "Image upload via drag-and-drop or file picker, thumbnail grid, parent delete, mobile camera support."
     }
   ],
   "futureEnhancements": [
-    "Feature #3: Skills & onboarding interview",
-    "Feature #4: Attachments & screenshots"
+    "Feature #3: Skills & onboarding interview (deferred -- family is small enough to know who does what)",
+    "Notifications -- lightweight alerts when a ticket is assigned to you or updated",
+    "Resolved ticket archive / history view",
+    "Dashboard stats (tickets resolved this week, avg time to resolve, top helpers)",
+    "Due dates on long-term tickets (honey-do list with gentle nudges)"
   ]
 }

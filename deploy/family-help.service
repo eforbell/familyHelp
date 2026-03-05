@@ -1,15 +1,17 @@
 [Unit]
-Description=Family HelpDesk
+Description=Forbell Family HelpDesk
 After=network.target postgresql.service
 
 [Service]
 Type=simple
 User=forbell
-WorkingDirectory=/home/forbell/workspace/homeApps/familyHelp
-ExecStart=/usr/bin/node server.js
-Restart=on-failure
-RestartSec=5
+WorkingDirectory=/data/apps/familyHelp
+EnvironmentFile=/data/apps/familyHelp/.env
 Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /data/apps/familyHelp/server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target

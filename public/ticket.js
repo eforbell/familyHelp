@@ -25,7 +25,7 @@ async function init() {
 
   const ticketId = getTicketId();
   const [t, m] = await Promise.all([
-    api(`../api/tickets/${ticketId}`),
+    api(`../api/tickets/${ticketId}?member_id=${currentMember.id}`),
     api('../api/members')
   ]);
   ticket = t;
@@ -222,10 +222,11 @@ async function askMagicHelp() {
   try {
     const result = await api(`../api/tickets/${ticket.id}/magic-help`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_id: currentMember.id })
     });
     // Refresh ticket to get updated ai_suggestion
-    ticket = await api(`../api/tickets/${ticket.id}`);
+    ticket = await api(`../api/tickets/${ticket.id}?member_id=${currentMember.id}`);
     renderMagicHelp();
     loadComments();
   } catch (err) {
@@ -254,9 +255,9 @@ async function submitFollowUp() {
     await api(`../api/tickets/${ticket.id}/magic-help-followup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, member_id: currentMember.id })
     });
-    ticket = await api(`../api/tickets/${ticket.id}`);
+    ticket = await api(`../api/tickets/${ticket.id}?member_id=${currentMember.id}`);
     renderMagicHelp();
     loadComments();
   } catch (err) {
@@ -271,9 +272,9 @@ async function magicHelpFeedback(helped) {
     await api(`../api/tickets/${ticket.id}/magic-help-feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ helped })
+      body: JSON.stringify({ helped, member_id: currentMember.id })
     });
-    ticket = await api(`../api/tickets/${ticket.id}`);
+    ticket = await api(`../api/tickets/${ticket.id}?member_id=${currentMember.id}`);
     renderTicket();
     loadComments();
   } catch (err) {
@@ -284,7 +285,7 @@ async function magicHelpFeedback(helped) {
 // ── Attachments ───────────────────────────────────────────────────────────
 
 async function loadAttachments() {
-  const attachments = await api(`../api/tickets/${ticket.id}/attachments`);
+  const attachments = await api(`../api/tickets/${ticket.id}/attachments?member_id=${currentMember.id}`);
   document.getElementById('attachmentCount').textContent = attachments.length;
   const el = document.getElementById('attachmentList');
   if (!attachments.length) {
@@ -346,7 +347,7 @@ async function handleFiles(files) {
 async function deleteAttachment(id) {
   if (!confirm('Remove this attachment?')) return;
   try {
-    await api(`../api/attachments/${id}`, { method: 'DELETE' });
+    await api(`../api/attachments/${id}?member_id=${currentMember.id}`, { method: 'DELETE' });
     loadAttachments();
     loadComments();
   } catch (err) { alert(err.message); }
@@ -355,7 +356,7 @@ async function deleteAttachment(id) {
 // ── Comments ──────────────────────────────────────────────────────────────
 
 async function loadComments() {
-  const comments = await api(`../api/tickets/${ticket.id}/comments`);
+  const comments = await api(`../api/tickets/${ticket.id}/comments?member_id=${currentMember.id}`);
   const el = document.getElementById('commentList');
   if (!comments.length) {
     el.innerHTML = '<div class="empty">No comments yet</div>';

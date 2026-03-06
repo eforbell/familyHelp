@@ -152,6 +152,22 @@ async function addSystemComment(ticketId, body) {
   await pool.query('INSERT INTO ticket_comments (ticket_id, body, is_system) VALUES ($1, $2, TRUE)', [ticketId, body]);
 }
 
+async function memberById(id) {
+  if (!id) return null;
+  const r = await pool.query('SELECT id, name, role FROM family_members WHERE id = $1', [id]);
+  return r.rows[0] || null;
+}
+
+async function canMemberViewTicket(ticketId, memberId) {
+  const member = await memberById(memberId);
+  if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
+  if (member.role === 'parent') return { ok: true, member };
+
+  const t = await pool.query('SELECT id FROM tickets WHERE id = $1 AND (created_by = $2 OR assigned_to = $2)', [ticketId, memberId]);
+  if (!t.rows.length) return { ok: false, code: 403, error: 'Not authorized for this ticket' };
+  return { ok: true, member };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -179,6 +195,10 @@ app.get('/api/categories', async (req, res) => {
 app.get('/api/tickets', async (req, res) => {
   try {
     const { status, assigned_to, created_by, category_id, priority, member_id } = req.query;
+    if (!member_id) return res.status(400).json({ error: 'member_id is required' });
+    const member = await memberById(member_id);
+    if (!member) return res.status(400).json({ error: 'Valid member_id is required' });
+
     let sql = `
       SELECT t.*,
         c.name AS category_name,
@@ -201,12 +221,9 @@ app.get('/api/tickets', async (req, res) => {
     if (priority) { params.push(priority); sql += ` AND t.priority = $${++pi}`; }
 
     // Kid filter: only see tickets they created or are assigned to
-    if (member_id) {
-      const mem = await pool.query('SELECT role FROM family_members WHERE id=$1', [member_id]);
-      if (mem.rows[0]?.role === 'kid') {
-        params.push(member_id, member_id);
-        sql += ` AND (t.created_by = $${++pi} OR t.assigned_to = $${++pi})`;
-      }
+    if (member.role === 'kid') {
+      params.push(member_id, member_id);
+      sql += ` AND (t.created_by = $${++pi} OR t.assigned_to = $${++pi})`;
     }
 
     sql += ' ORDER BY CASE t.priority WHEN \'urgent\' THEN 0 WHEN \'normal\' THEN 1 WHEN \'long-term\' THEN 2 END, t.updated_at DESC';
@@ -242,6 +259,10 @@ app.post('/api/tickets', async (req, res) => {
 
 app.get('/api/tickets/:id', async (req, res) => {
   try {
+    const { member_id } = req.query;
+    const access = await canMemberViewTicket(req.params.id, member_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     const r = await pool.query(`
       SELECT t.*,
         c.name AS category_name, c.guidance AS category_guidance,
@@ -262,18 +283,26 @@ app.put('/api/tickets/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const { status, assigned_to, priority, member_id } = req.body;
+    if (!member_id) return res.status(400).json({ error: 'member_id is required' });
 
     // Fetch current ticket
     const cur = await pool.query('SELECT * FROM tickets WHERE id=$1', [id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'Ticket not found' });
     const ticket = cur.rows[0];
+    const actor = await memberById(member_id);
+    if (!actor) return res.status(400).json({ error: 'Valid member_id is required' });
+    if (actor.role === 'kid' && String(ticket.created_by) !== String(member_id) && String(ticket.assigned_to) !== String(member_id)) {
+      return res.status(403).json({ error: 'Not authorized for this ticket' });
+    }
 
     // Role check for assignment
-    if (assigned_to !== undefined && member_id) {
-      const actor = await pool.query('SELECT role FROM family_members WHERE id=$1', [member_id]);
-      if (actor.rows[0]?.role === 'kid' && assigned_to !== null && String(assigned_to) !== String(member_id)) {
+    if (assigned_to !== undefined) {
+      if (actor.role === 'kid' && assigned_to !== null && String(assigned_to) !== String(member_id)) {
         return res.status(403).json({ error: 'Kids can only self-assign tickets' });
       }
+    }
+    if (priority !== undefined && actor.role === 'kid') {
+      return res.status(403).json({ error: 'Only parents can change priority' });
     }
 
     const updates = [];
@@ -304,8 +333,7 @@ app.put('/api/tickets/:id', async (req, res) => {
     const r = await pool.query(sql, params);
 
     // System comments for changes
-    const actorR = member_id ? await pool.query('SELECT name FROM family_members WHERE id=$1', [member_id]) : null;
-    const actorName = actorR?.rows[0]?.name || 'Someone';
+    const actorName = actor.name || 'Someone';
 
     if (status !== undefined && status !== ticket.status) {
       await addSystemComment(id, `${actorName} changed status to ${status}`);
@@ -330,6 +358,10 @@ app.put('/api/tickets/:id', async (req, res) => {
 
 app.get('/api/tickets/:id/comments', async (req, res) => {
   try {
+    const { member_id } = req.query;
+    const access = await canMemberViewTicket(req.params.id, member_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     const r = await pool.query(`
       SELECT tc.*, fm.name AS author_name, fm.avatar_emoji AS author_avatar
       FROM ticket_comments tc
@@ -346,6 +378,8 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
     const { body, author_id } = req.body;
     if (!body || body.trim().length < 10) return res.status(400).json({ error: 'Comment must be at least 10 characters' });
     if (!author_id) return res.status(400).json({ error: 'author_id is required' });
+    const access = await canMemberViewTicket(req.params.id, author_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const r = await pool.query(
       'INSERT INTO ticket_comments (ticket_id, author_id, body) VALUES ($1, $2, $3) RETURNING *',
@@ -512,6 +546,10 @@ async function tryAutoMagicHelp(ticket) {
 
 app.post('/api/tickets/:id/magic-help', async (req, res) => {
   try {
+    const memberId = req.body?.member_id;
+    const access = await canMemberViewTicket(req.params.id, memberId);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
     const enabled = await cfg('magic_help_enabled');
     if (enabled !== 'true') return res.status(503).json({ error: 'MagicHelp is not enabled. Enable it in Settings.' });
@@ -539,6 +577,10 @@ app.post('/api/tickets/:id/magic-help', async (req, res) => {
 
 app.post('/api/tickets/:id/magic-help-followup', async (req, res) => {
   try {
+    const memberId = req.body?.member_id;
+    const access = await canMemberViewTicket(req.params.id, memberId);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
     const enabled = await cfg('magic_help_enabled');
     if (enabled !== 'true') return res.status(503).json({ error: 'MagicHelp is not enabled' });
@@ -568,6 +610,10 @@ app.post('/api/tickets/:id/magic-help-followup', async (req, res) => {
 
 app.post('/api/tickets/:id/magic-help-feedback', async (req, res) => {
   try {
+    const memberId = req.body?.member_id;
+    const access = await canMemberViewTicket(req.params.id, memberId);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     const { helped } = req.body;
     await pool.query('UPDATE tickets SET ai_helped = $1, updated_at = now() WHERE id = $2', [helped, req.params.id]);
 
@@ -647,6 +693,8 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
 
     if (!file || !file.data || !file.data.length) return res.status(400).json({ error: 'No file provided' });
     if (!uploadedBy) return res.status(400).json({ error: 'uploaded_by is required' });
+    const access = await canMemberViewTicket(req.params.id, uploadedBy);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
     if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, or GIF.` });
     if (file.data.length > MAX_FILE_SIZE) return res.status(400).json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` });
 
@@ -677,6 +725,10 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
 
 app.get('/api/tickets/:id/attachments', async (req, res) => {
   try {
+    const { member_id } = req.query;
+    const access = await canMemberViewTicket(req.params.id, member_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
     const r = await pool.query(`
       SELECT ta.*, fm.name AS uploader_name
       FROM ticket_attachments ta
@@ -690,6 +742,11 @@ app.get('/api/tickets/:id/attachments', async (req, res) => {
 
 app.delete('/api/attachments/:id', async (req, res) => {
   try {
+    const memberId = req.query.member_id;
+    const actor = await memberById(memberId);
+    if (!actor) return res.status(400).json({ error: 'Valid member_id is required' });
+    if (actor.role !== 'parent') return res.status(403).json({ error: 'Only parents can remove attachments' });
+
     const r = await pool.query('SELECT * FROM ticket_attachments WHERE id=$1', [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Attachment not found' });
 

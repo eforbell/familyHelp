@@ -360,7 +360,7 @@ async function loadAttachments() {
   el.innerHTML = `<div class="attachment-grid">${attachments.map(a => `
     <div class="attachment-item">
       <a href="../uploads/${esc(a.filename)}" target="_blank" rel="noopener">
-        <img src="../uploads/${esc(a.filename)}" alt="${esc(a.original_name)}" loading="lazy">
+        ${renderAttachmentPreview(a)}
       </a>
       <div class="attachment-meta">
         <span>${esc(a.original_name)}</span>
@@ -369,6 +369,15 @@ async function loadAttachments() {
       ${currentMember.role === 'parent' ? `<button class="btn btn-danger btn-small" onclick="deleteAttachment(${a.id})" style="padding:0.15rem 0.4rem; font-size:0.7rem;">Remove</button>` : ''}
     </div>
   `).join('')}</div>`;
+}
+
+function renderAttachmentPreview(attachment) {
+  if (attachment.mime_type === 'application/pdf') {
+    return `<div class="attachment-preview attachment-preview-pdf" aria-label="${esc(attachment.original_name)}">
+      <span class="attachment-preview-badge">PDF</span>
+    </div>`;
+  }
+  return `<img src="../uploads/${esc(attachment.filename)}" alt="${esc(attachment.original_name)}" loading="lazy">`;
 }
 
 function formatSize(bytes) {
@@ -380,8 +389,8 @@ function formatSize(bytes) {
 async function handleFiles(files) {
   const statusEl = document.getElementById('uploadStatus');
   for (const file of files) {
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
-      statusEl.textContent = `${file.name}: not a supported image type`;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'].includes(file.type)) {
+      statusEl.textContent = `${file.name}: not a supported attachment type`;
       continue;
     }
     if (file.size > 10 * 1024 * 1024) {

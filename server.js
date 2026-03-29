@@ -15,7 +15,7 @@ const SETTINGS_SESSION_COOKIE = 'fh_settings_session';
 const SETTINGS_SESSION_MINUTES = 480; // 8 hours
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']);
 
 // Ensure uploads dir exists
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -882,7 +882,7 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
     if (!uploadedBy) return res.status(400).json({ error: 'uploaded_by is required' });
     const access = await canMemberViewTicket(req.params.id, uploadedBy);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
-    if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, or GIF.` });
+    if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, GIF, or PDF.` });
     if (file.data.length > MAX_FILE_SIZE) return res.status(400).json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` });
 
     // Verify ticket exists

@@ -3,3 +3,4 @@
 2026-03-05  Feature 2 (MagicHelp AI) implemented and deployed. Token limit fix. Follow-up conversation added.
 2026-03-05  Feature 4 (Attachments) implemented, tested on feature branch, merged to main, deployed.
 2026-03-05  All 3 shipped features live on erebor. Entering real-world usage phase with family.
+2026-03-28  Drafted Feature 5 (Reminders & Notifications Foundation). Plan is separate reminder runner plus brrr delivery for the primary assignee.

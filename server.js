@@ -158,6 +158,13 @@ async function memberById(id) {
   return r.rows[0] || null;
 }
 
+function maskSecret(secret) {
+  if (!secret) return null;
+  const value = String(secret).trim();
+  if (value.length <= 4) return '••••';
+  return `••••${value.slice(-4)}`;
+}
+
 async function canMemberViewTicket(ticketId, memberId) {
   const member = await memberById(memberId);
   if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
@@ -165,6 +172,19 @@ async function canMemberViewTicket(ticketId, memberId) {
 
   const t = await pool.query('SELECT id FROM tickets WHERE id = $1 AND (created_by = $2 OR assigned_to = $2)', [ticketId, memberId]);
   if (!t.rows.length) return { ok: false, code: 403, error: 'Not authorized for this ticket' };
+  return { ok: true, member };
+}
+
+async function canManageTicketReminders(ticketId, memberId) {
+  const member = await memberById(memberId);
+  if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
+  if (member.role === 'parent') return { ok: true, member };
+
+  const r = await pool.query('SELECT assigned_to FROM tickets WHERE id = $1', [ticketId]);
+  if (!r.rows.length) return { ok: false, code: 404, error: 'Ticket not found' };
+  if (String(r.rows[0].assigned_to || '') !== String(memberId)) {
+    return { ok: false, code: 403, error: 'Only the assignee or a parent can manage reminder snooze' };
+  }
   return { ok: true, member };
 }
 
@@ -267,11 +287,13 @@ app.get('/api/tickets/:id', async (req, res) => {
       SELECT t.*,
         c.name AS category_name, c.guidance AS category_guidance,
         fm_creator.name AS creator_name, fm_creator.avatar_emoji AS creator_avatar,
-        fm_assignee.name AS assignee_name, fm_assignee.avatar_emoji AS assignee_avatar
+        fm_assignee.name AS assignee_name, fm_assignee.avatar_emoji AS assignee_avatar,
+        trs.last_reminded_at, trs.next_reminder_at, trs.reminder_stage, trs.snooze_until, trs.last_delivery_error
       FROM tickets t
       LEFT JOIN ticket_categories c ON c.id = t.category_id
       LEFT JOIN family_members fm_creator ON fm_creator.id = t.created_by
       LEFT JOIN family_members fm_assignee ON fm_assignee.id = t.assigned_to
+      LEFT JOIN ticket_reminder_state trs ON trs.ticket_id = t.id
       WHERE t.id = $1
     `, [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error: 'Ticket not found' });
@@ -350,7 +372,79 @@ app.put('/api/tickets/:id', async (req, res) => {
       await addSystemComment(id, `${actorName} changed priority to ${priority}`);
     }
 
+    if ((assigned_to !== undefined && String(assigned_to) !== String(ticket.assigned_to))
+      || (status !== undefined && ['resolved', 'closed'].includes(status))) {
+      await pool.query(`
+        INSERT INTO ticket_reminder_state (ticket_id, snooze_until, next_reminder_at, reminder_stage, last_ticket_updated_at, updated_at)
+        VALUES ($1, NULL, NULL, 0, $2, now())
+        ON CONFLICT (ticket_id)
+        DO UPDATE SET
+          snooze_until = NULL,
+          next_reminder_at = NULL,
+          reminder_stage = 0,
+          last_ticket_updated_at = $2,
+          updated_at = now()
+      `, [id, r.rows[0].updated_at]);
+    }
+
     res.json(r.rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/tickets/:id/snooze', async (req, res) => {
+  try {
+    const { member_id, until } = req.body || {};
+    const access = await canManageTicketReminders(req.params.id, member_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
+    if (!until) return res.status(400).json({ error: 'until is required' });
+    const untilDate = new Date(until);
+    if (Number.isNaN(untilDate.getTime())) return res.status(400).json({ error: 'Invalid until timestamp' });
+    if (untilDate.getTime() <= Date.now()) return res.status(400).json({ error: 'Snooze time must be in the future' });
+
+    const ticketRow = await pool.query('SELECT updated_at FROM tickets WHERE id = $1', [req.params.id]);
+    if (!ticketRow.rows.length) return res.status(404).json({ error: 'Ticket not found' });
+
+    await pool.query(`
+      INSERT INTO ticket_reminder_state (ticket_id, snooze_until, next_reminder_at, reminder_stage, last_ticket_updated_at, updated_at)
+      VALUES ($1, $2, $2, 0, $3, now())
+      ON CONFLICT (ticket_id)
+      DO UPDATE SET
+        snooze_until = EXCLUDED.snooze_until,
+        next_reminder_at = EXCLUDED.next_reminder_at,
+        reminder_stage = 0,
+        last_ticket_updated_at = EXCLUDED.last_ticket_updated_at,
+        updated_at = now()
+    `, [req.params.id, untilDate.toISOString(), ticketRow.rows[0].updated_at]);
+
+    await addSystemComment(req.params.id, `${access.member.name} snoozed reminders until ${untilDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+    res.json({ ok: true, snooze_until: untilDate.toISOString() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/tickets/:id/snooze', async (req, res) => {
+  try {
+    const { member_id } = req.body || {};
+    const access = await canManageTicketReminders(req.params.id, member_id);
+    if (!access.ok) return res.status(access.code).json({ error: access.error });
+
+    const ticketRow = await pool.query('SELECT updated_at FROM tickets WHERE id = $1', [req.params.id]);
+    if (!ticketRow.rows.length) return res.status(404).json({ error: 'Ticket not found' });
+
+    await pool.query(`
+      INSERT INTO ticket_reminder_state (ticket_id, snooze_until, next_reminder_at, reminder_stage, last_ticket_updated_at, updated_at)
+      VALUES ($1, NULL, NULL, 0, $2, now())
+      ON CONFLICT (ticket_id)
+      DO UPDATE SET
+        snooze_until = NULL,
+        next_reminder_at = NULL,
+        reminder_stage = 0,
+        last_ticket_updated_at = EXCLUDED.last_ticket_updated_at,
+        updated_at = now()
+    `, [req.params.id, ticketRow.rows[0].updated_at]);
+
+    await addSystemComment(req.params.id, `${access.member.name} cleared the reminder snooze`);
+    res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -476,6 +570,99 @@ app.put('/api/config', requireSettingsAuth, async (req, res) => {
     // Don't allow overwriting auth secrets via this endpoint
     if (key.includes('pin') || key.includes('secret')) return res.status(403).json({ error: 'Cannot modify auth keys' });
     await setCfg(key, value);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/notification-channels', requireSettingsAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        fm.id AS member_id,
+        fm.name AS member_name,
+        fm.role AS member_role,
+        fm.avatar_emoji AS member_avatar,
+        mnc.id,
+        mnc.channel_type,
+        mnc.label,
+        mnc.enabled,
+        mnc.target_secret,
+        mnc.updated_at
+      FROM family_members fm
+      LEFT JOIN member_notification_channels mnc
+        ON mnc.member_id = fm.id AND mnc.channel_type = 'brrr'
+      ORDER BY fm.id
+    `);
+
+    res.json(r.rows.map(row => ({
+      member_id: row.member_id,
+      member_name: row.member_name,
+      member_role: row.member_role,
+      member_avatar: row.member_avatar,
+      channel_type: 'brrr',
+      label: row.label || '',
+      enabled: !!row.enabled,
+      has_secret: !!row.target_secret,
+      secret_mask: maskSecret(row.target_secret),
+      updated_at: row.updated_at
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/notification-channels/:memberId/brrr', requireSettingsAuth, async (req, res) => {
+  try {
+    const memberId = req.params.memberId;
+    const member = await memberById(memberId);
+    if (!member) return res.status(404).json({ error: 'Member not found' });
+
+    const enabled = req.body?.enabled === true;
+    const label = String(req.body?.label || '').trim() || null;
+    const secret = req.body?.secret;
+
+    const existing = await pool.query(
+      'SELECT target_secret FROM member_notification_channels WHERE member_id = $1 AND channel_type = $2',
+      [memberId, 'brrr']
+    );
+
+    const existingSecret = existing.rows[0]?.target_secret || null;
+    const nextSecret = secret === undefined ? existingSecret : String(secret || '').trim() || null;
+
+    if (enabled && !nextSecret) {
+      return res.status(400).json({ error: 'A brrr secret is required before notifications can be enabled for this member' });
+    }
+
+    if (nextSecret && nextSecret.length < 12) {
+      return res.status(400).json({ error: 'brrr secret looks too short' });
+    }
+
+    const r = await pool.query(`
+      INSERT INTO member_notification_channels (member_id, channel_type, label, target_secret, enabled, updated_at)
+      VALUES ($1, 'brrr', $2, $3, $4, now())
+      ON CONFLICT (member_id, channel_type)
+      DO UPDATE SET
+        label = EXCLUDED.label,
+        target_secret = EXCLUDED.target_secret,
+        enabled = EXCLUDED.enabled,
+        updated_at = now()
+      RETURNING member_id, channel_type, label, enabled, target_secret, updated_at
+    `, [memberId, label, nextSecret, enabled]);
+
+    res.json({
+      member_id: Number(memberId),
+      channel_type: 'brrr',
+      label: r.rows[0].label || '',
+      enabled: !!r.rows[0].enabled,
+      has_secret: !!r.rows[0].target_secret,
+      secret_mask: maskSecret(r.rows[0].target_secret),
+      updated_at: r.rows[0].updated_at
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/notification-channels/:memberId/brrr', requireSettingsAuth, async (req, res) => {
+  try {
+    const memberId = req.params.memberId;
+    await pool.query('DELETE FROM member_notification_channels WHERE member_id = $1 AND channel_type = $2', [memberId, 'brrr']);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

@@ -60,6 +60,36 @@
     </div>
 
     <div class="settings-section">
+      <h3>Reminders</h3>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="remindersEnabled">
+          Enable reminder system
+        </label>
+        <div class="form-hint">This only enables reminder processing globally. Individual family members still need to opt in with their own brrr secret before they can receive notifications.</div>
+      </div>
+      <div class="form-group">
+        <label for="reminderInterruptionLevel">Default brrr interruption level</label>
+        <select id="reminderInterruptionLevel">
+          <option value="passive">passive</option>
+          <option value="active">active</option>
+          <option value="time-sensitive">time-sensitive</option>
+        </select>
+        <div class="form-hint">Use a gentler default for reminder nudges. Urgent tickets can still be treated more aggressively later in the runner.</div>
+      </div>
+      <div class="form-group">
+        <label for="reminderBaseUrl">Public FamilyHelp base URL</label>
+        <input type="url" id="reminderBaseUrl" placeholder="https://your-host/help">
+        <div class="form-hint">Used to build deep links in reminder notifications. Include the nginx subpath if you use one, for example `https://erebor.tailnet/help`.</div>
+      </div>
+      <button class="btn btn-primary btn-small" onclick="saveReminderSettings()">Save Reminder Settings</button>
+      <span id="reminderSaveStatus" style="margin-left:0.5rem; font-size:0.85rem; color:var(--accent);"></span>
+
+      <div class="form-hint" style="margin-top:1rem;">Per-member brrr opt-in. Enter either the raw secret or the full webhook URL. Values are write-only once saved.</div>
+      <div id="notificationChannelList" style="margin-top:0.8rem;"></div>
+    </div>
+
+    <div class="settings-section">
       <h3>MagicHelp AI</h3>
       <div class="form-group">
         <label>

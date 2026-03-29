@@ -1,6 +1,11 @@
 {
-  "currentFeature": null,
-  "status": "idle",
+  "currentFeature": {
+    "featureId": "feature-5",
+    "featureName": "Reminders & Notifications Foundation",
+    "startedDate": "2026-03-28",
+    "notes": "Planning drafted. Focus on separate reminder runner plus brrr delivery for the primary assignee."
+  },
+  "status": "planning",
   "completedFeatures": [
     {
       "featureId": "feature-1",
@@ -23,7 +28,7 @@
   ],
   "futureEnhancements": [
     "Feature #3: Skills & onboarding interview (deferred -- family is small enough to know who does what)",
-    "Notifications -- lightweight alerts when a ticket is assigned to you or updated",
+    "Notifications -- family-wide channels after v1 reminder foundation ships",
     "Resolved ticket archive / history view",
     "Dashboard stats (tickets resolved this week, avg time to resolve, top helpers)",
     "Due dates on long-term tickets (honey-do list with gentle nudges)"

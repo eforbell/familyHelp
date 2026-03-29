@@ -1,0 +1,197 @@
+{
+  "branchName": "main",
+  "projectName": "Reminders & Notifications Foundation",
+  "description": "Server-driven reminder system for stale assigned tickets, with brrr as the first delivery channel. Split reminder detection from the web request lifecycle so the app can nudge the primary assignee about aging work without turning the web app into a full PWA yet.",
+  "timing": {
+    "draftedOn": "2026-03-28",
+    "plannedEarliestExecution": "2026-03-28",
+    "gatingCondition": "Can proceed immediately. Requires a brrr webhook secret before end-to-end delivery testing."
+  },
+  "principles": [
+    "Detect staleness on the server, not in the browser",
+    "Run reminder evaluation from a separate scheduled process, not tied to web traffic",
+    "Start with one-user value: Evan as primary assignee",
+    "Keep delivery channels pluggable so web push or family-wide onboarding can follow later",
+    "Prefer gentle, actionable nudges over noisy notification spam"
+  ],
+  "techStack": {
+    "language": "Node.js + vanilla JS",
+    "runtime": "Express for app, standalone Node script for reminder runner",
+    "database": "PostgreSQL",
+    "scheduler": "systemd timer or cron on the Ubuntu host",
+    "initialDeliveryChannel": "brrr webhook API"
+  },
+  "userStories": [
+    {
+      "id": "NOTIFY-001",
+      "title": "Store notification channels for family members",
+      "acceptanceCriteria": [
+        "A member can have zero or more notification channels",
+        "Initial supported channel type is brrr",
+        "Channel records support enabled/disabled state and optional label",
+        "Secrets or subscription payloads are stored server-side and never exposed in normal ticket APIs"
+      ],
+      "priority": 1,
+      "estimatedLines": "+180",
+      "testStrategy": "Manual API verification and DB inspection",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-002",
+      "title": "Track reminder state separately from ticket activity",
+      "acceptanceCriteria": [
+        "Reminder state is stored independently from tickets",
+        "Each ticket can track last reminder sent, next eligible reminder time, reminder stage, and snooze state",
+        "Resolved and closed tickets are automatically excluded from future reminder sends",
+        "Repeated runs are idempotent and do not double-send the same reminder window"
+      ],
+      "priority": 1,
+      "estimatedLines": "+160",
+      "testStrategy": "Manual DB setup plus repeated runner execution",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-003",
+      "title": "Reminder detection runner for stale assigned tickets",
+      "acceptanceCriteria": [
+        "A standalone script evaluates stale tickets without requiring HTTP traffic",
+        "Only actionable tickets are considered: open, in-progress, waiting",
+        "Initial staleness rules vary by priority (urgent, normal, long-term)",
+        "Runner can execute safely on a schedule every 30 to 60 minutes"
+      ],
+      "priority": 1,
+      "estimatedLines": "+250",
+      "testStrategy": "Manual dry-run and live-run verification",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-004",
+      "title": "Send brrr notifications with deep links into FamilyHelp",
+      "acceptanceCriteria": [
+        "Reminder notifications are delivered through brrr using a stored webhook secret",
+        "Notification includes a useful title, short stale summary, and deep link to the ticket",
+        "Reminder urgency maps to sensible brrr interruption behavior",
+        "Delivery failures are logged and do not crash the runner"
+      ],
+      "priority": 1,
+      "estimatedLines": "+140",
+      "testStrategy": "Manual send to a real device",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-005",
+      "title": "Basic admin controls for reminder behavior",
+      "acceptanceCriteria": [
+        "Settings page can enable or disable reminders globally",
+        "Settings page can store one or more brrr webhook targets",
+        "Settings page can configure initial reminder thresholds per priority",
+        "Settings page can configure quiet-hour-friendly behavior such as passive vs active delivery"
+      ],
+      "priority": 2,
+      "estimatedLines": "+220",
+      "testStrategy": "Manual settings flow verification",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-006",
+      "title": "Ticket-level snooze and reminder visibility",
+      "acceptanceCriteria": [
+        "A ticket can be snoozed until a specific time or for a preset duration",
+        "Snoozed tickets are skipped by the reminder runner until the snooze expires",
+        "Ticket detail clearly shows when the next reminder is expected or if the ticket is snoozed",
+        "Primary assignee can quiet a noisy ticket without resolving it"
+      ],
+      "priority": 2,
+      "estimatedLines": "+220",
+      "testStrategy": "Manual browser verification plus runner checks",
+      "passes": false
+    },
+    {
+      "id": "NOTIFY-007",
+      "title": "Foundation for future channels and family-wide onboarding",
+      "acceptanceCriteria": [
+        "Notification sending is abstracted behind a small channel interface",
+        "Adding web push later does not require rewriting stale detection",
+        "Adding channels for additional family members only requires configuration and UI work, not a new reminder engine"
+      ],
+      "priority": 3,
+      "estimatedLines": "+120",
+      "testStrategy": "Code review and targeted manual verification",
+      "passes": false
+    }
+  ],
+  "riskAssessment": {
+    "high": [
+      "Reminder spam if staleness thresholds and dedupe logic are not carefully designed",
+      "Webhook secret handling must be treated as sensitive configuration data"
+    ],
+    "medium": [
+      "systemd timer or cron deployment wiring must match the home server environment",
+      "Deep links need to respect nginx /help/ subpath deployment"
+    ],
+    "low": [
+      "Current schema already exposes strong staleness signals via updated_at, status, priority, and assigned_to",
+      "brrr is intentionally simple and matches the single-user-first rollout"
+    ]
+  },
+  "proposedSchema": {
+    "newTables": [
+      "member_notification_channels",
+      "ticket_reminder_state"
+    ],
+    "possibleTicketAdditions": [
+      "snooze_until TIMESTAMPTZ",
+      "last_viewed_at or last_action_at only if updated_at proves too coarse"
+    ],
+    "notes": [
+      "Keep the first migration narrow. Store reminder bookkeeping outside tickets where possible.",
+      "Do not over-model delivery history on day one unless debugging proves it necessary."
+    ]
+  },
+  "deliveryRules": {
+    "initialAudience": "Primary assignee only, mainly Evan",
+    "stalenessThresholds": {
+      "urgent": "4 hours idle, then daily",
+      "normal": "24 hours idle, then every 2 days",
+      "long-term": "7 days idle, then weekly"
+    },
+    "eligibleStatuses": [
+      "open",
+      "in-progress",
+      "waiting"
+    ],
+    "initialSuppressionRules": [
+      "No reminders for unassigned tickets in v1",
+      "No reminders for resolved or closed tickets",
+      "Skip while snoozed",
+      "Skip if reminders are globally disabled"
+    ]
+  },
+  "metrics": {
+    "estimatedTotalLines": "+1290",
+    "storiesCount": 7,
+    "filesLikelyCreated": [
+      "db/migrations/003-notification-foundation.sql",
+      "lib/notifications.js",
+      "lib/reminder-rules.js",
+      "scripts/send-reminders.js",
+      "deploy/family-help-reminders.service",
+      "deploy/family-help-reminders.timer"
+    ],
+    "filesLikelyModified": [
+      "server.js",
+      "public/settings.html",
+      "public/settings.js",
+      "public/ticket.html",
+      "public/ticket.js",
+      "README.md"
+    ]
+  },
+  "deferredScope": [
+    "Standards-based web push / PWA install flow",
+    "Home Screen manifest and service worker work",
+    "Kid-facing game mechanics and points",
+    "Notification digests and smart batching",
+    "Escalation to secondary assignees or parents"
+  ]
+}

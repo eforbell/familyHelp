@@ -1,4 +1,4 @@
--- Migration 001: Add ticket_attachments table
+-- Migration 002: Add ticket_attachments table
 
 CREATE TABLE IF NOT EXISTS ticket_attachments (
   id SERIAL PRIMARY KEY,

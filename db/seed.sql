@@ -18,5 +18,14 @@ ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO app_config (key, value) VALUES
   ('magic_help_enabled', 'false'),
-  ('magic_help_prompt', 'You are a helpful family assistant. For IT issues, provide clear troubleshooting steps. For homework, explain concepts and guide toward the answer without giving it directly. For house issues, provide practical advice but recommend a professional for anything involving electricity, plumbing, or structural work. Keep responses concise and friendly.')
+  ('magic_help_prompt', 'You are a helpful family assistant. For IT issues, provide clear troubleshooting steps. For homework, explain concepts and guide toward the answer without giving it directly. For house issues, provide practical advice but recommend a professional for anything involving electricity, plumbing, or structural work. Keep responses concise and friendly.'),
+  ('reminders_enabled', 'false'),
+  ('reminder_brrr_interruption_level', 'active'),
+  ('reminder_base_url', ''),
+  ('reminder_threshold_hours_urgent', '4'),
+  ('reminder_threshold_hours_normal', '24'),
+  ('reminder_threshold_hours_long_term', '168'),
+  ('reminder_repeat_hours_urgent', '24'),
+  ('reminder_repeat_hours_normal', '48'),
+  ('reminder_repeat_hours_long_term', '168')
 ON CONFLICT (key) DO NOTHING;

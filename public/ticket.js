@@ -60,6 +60,7 @@ function renderTicket() {
 
   renderMagicHelp();
   renderActions();
+  renderReminderControls();
 }
 
 function renderActions() {
@@ -159,6 +160,70 @@ async function setPriority(priority) {
   });
   renderTicket();
   loadComments();
+}
+
+function canManageSnooze() {
+  return currentMember.role === 'parent' || ticket.assigned_to === currentMember.id;
+}
+
+function renderReminderControls() {
+  const el = document.getElementById('reminderControls');
+  if (!el) return;
+
+  if (!canManageSnooze() || !['open', 'in-progress', 'waiting'].includes(ticket.status) || !ticket.assigned_to) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const snoozed = ticket.snooze_until && new Date(ticket.snooze_until).getTime() > Date.now();
+  const statusHtml = snoozed
+    ? `<div class="form-hint" style="margin-bottom:0.5rem;">Reminders snoozed until ${formatDateTime(ticket.snooze_until)}.</div>`
+    : '<div class="form-hint" style="margin-bottom:0.5rem;">Reminders active for this ticket.</div>';
+
+  el.innerHTML = `
+    ${statusHtml}
+    <div class="ticket-actions">
+      <button class="btn btn-secondary btn-small" onclick="snoozeTicketHours(4)">Snooze 4h</button>
+      <button class="btn btn-secondary btn-small" onclick="snoozeTicketHours(24)">Snooze 1d</button>
+      <button class="btn btn-secondary btn-small" onclick="snoozeTicketHours(48)">Snooze 2d</button>
+      <button class="btn btn-secondary btn-small" onclick="snoozeTicketHours(168)">Snooze 1w</button>
+      ${snoozed ? '<button class="btn btn-danger btn-small" onclick="clearSnooze()">Clear Snooze</button>' : ''}
+    </div>
+  `;
+}
+
+async function refreshTicket() {
+  ticket = await api(`../api/tickets/${ticket.id}?member_id=${currentMember.id}`);
+  renderTicket();
+}
+
+async function snoozeTicketHours(hours) {
+  try {
+    const until = new Date(Date.now() + (hours * 60 * 60 * 1000)).toISOString();
+    await api(`../api/tickets/${ticket.id}/snooze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_id: currentMember.id, until })
+    });
+    await refreshTicket();
+    loadComments();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function clearSnooze() {
+  try {
+    await api(`../api/tickets/${ticket.id}/snooze`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_id: currentMember.id })
+    });
+    await refreshTicket();
+    loadComments();
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 // ── MagicHelp ─────────────────────────────────────────────────────────────
@@ -435,6 +500,10 @@ function timeAgo(iso) {
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 init();

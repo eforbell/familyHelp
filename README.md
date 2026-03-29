@@ -61,11 +61,20 @@ cp .env.example .env
 ### Database
 
 ```bash
-psql $DATABASE_URL -f db/schema.sql
+npm run db:migrate
 psql $DATABASE_URL -f db/seed.sql
 ```
 
-If upgrading from an earlier version, check `db/migrations/` for any new migrations to run.
+Fresh installs should use `npm run db:migrate` as the primary schema path, then apply [db/seed.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/seed.sql). [db/schema.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/schema.sql) remains as a latest-schema snapshot/reference file. Deploys run migrations automatically via [deploy/deploy.sh](/Volumes/DATA/workspace/homeApps/familyHelp/deploy/deploy.sh).
+
+For local dev, a Docker Compose Postgres is included on port `5434`:
+
+```bash
+docker compose up -d
+cp .env.example .env
+npm run db:migrate
+psql $DATABASE_URL -f db/seed.sql
+```
 
 ### Environment variables
 
@@ -82,6 +91,9 @@ If upgrading from an earlier version, check `db/migrations/` for any new migrati
 ```bash
 npm start          # production
 npm run dev        # development (auto-restart on changes)
+npm run db:migrate # apply numbered SQL migrations
+npm run reminders:run
+npm run reminders:dry-run
 ```
 
 ## Deployment (Linux / Tailscale)
@@ -92,9 +104,13 @@ The app runs on a home server behind nginx. Designed for LAN/Tailscale access.
 
 ```bash
 sudo cp deploy/family-help.service /etc/systemd/system/
+sudo cp deploy/family-help-reminders.service /etc/systemd/system/
+sudo cp deploy/family-help-reminders.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable family-help
 sudo systemctl start family-help
+sudo systemctl enable family-help-reminders.timer
+sudo systemctl start family-help-reminders.timer
 ```
 
 ### nginx
@@ -121,6 +137,25 @@ Then `sudo nginx -t && sudo systemctl reload nginx`.
 ./deploy/deploy.sh origin/my-branch   # test a branch in production
 ```
 
+### Erebor Rollout
+
+```bash
+git push origin main
+ssh erebor
+cd /data/apps/familyHelp
+./deploy/deploy.sh
+sudo systemctl enable family-help-reminders.timer
+sudo systemctl start family-help-reminders.timer
+sudo systemctl status family-help --no-pager
+sudo systemctl status family-help-reminders.timer --no-pager
+```
+
+After deploy, open Settings once to confirm:
+
+- reminders are enabled globally
+- your brrr target is still enabled
+- `reminder_base_url` points at the erebor/Tailscale URL
+
 ## Project structure
 
 ```
@@ -128,10 +163,15 @@ server.js              # Express server, all routes inline
 lib/
   date-utils.js        # Date formatting helpers
   openai.js            # MagicHelp AI (generate + follow-up)
+  notifications.js     # brrr delivery helper
+  reminder-rules.js    # Staleness and cadence rules
 db/
-  schema.sql           # Full schema (run on fresh installs)
+  schema.sql           # Latest schema snapshot / reference
   seed.sql             # Family members, categories, default config
-  migrations/          # Incremental schema changes
+  migrations/          # Numbered SQL migrations (primary schema path)
+  migrate.js           # Migration runner (schema_migrations)
+scripts/
+  send-reminders.js    # Standalone reminder runner
 public/
   index.html + app.js      # Dashboard
   new.html + new.js        # Create ticket
@@ -142,6 +182,8 @@ public/
 uploads/               # Attachment storage (auto-created, gitignored)
 deploy/
   family-help.service  # systemd unit
+  family-help-reminders.service  # systemd oneshot reminder runner
+  family-help-reminders.timer    # 30-minute reminder schedule
   deploy.sh            # Git-based deploy script
 planning/              # Feature plans and progress tracking
 ```

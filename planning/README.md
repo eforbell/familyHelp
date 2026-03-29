@@ -15,3 +15,4 @@ Current queued features:
 2. MagicHelp AI first-tier support
 3. Skills & onboarding interview
 4. Attachments & screenshots
+5. Reminders & notifications foundation

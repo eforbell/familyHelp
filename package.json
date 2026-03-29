@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "db:migrate": "node db/migrate.js",
+    "reminders:run": "node scripts/send-reminders.js",
+    "reminders:dry-run": "node scripts/send-reminders.js --dry-run"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

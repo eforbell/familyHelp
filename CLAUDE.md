@@ -17,11 +17,16 @@ Jordan (Son, kid), Casey (Daughter, kid, softball player).
 npm install            # first time
 npm run dev            # node --watch (Node 18+)
 npm start              # production
+npm run db:migrate     # apply numbered SQL migrations
+npm run reminders:run
+npm run reminders:dry-run
 
 # Database setup (run once on a new Postgres instance)
-psql $DATABASE_URL -f db/schema.sql
+npm run db:migrate
 psql $DATABASE_URL -f db/seed.sql
 ```
+
+For local dev, a Docker Compose Postgres is included on port `5434`. The checked-in `.env.example` points at that default container.
 
 Copy `.env.example` to `.env` and fill in values.
 
@@ -33,9 +38,15 @@ Single-process Node.js/Express. No build step. Vanilla HTML/CSS/JS frontend.
 server.js              # Express -- all routes inline
 lib/
   date-utils.js        # Shared date helpers
+  notifications.js     # brrr notification delivery helper
+  reminder-rules.js    # Reminder cadence and staleness helpers
 db/
-  schema.sql           # CREATE TABLE statements
+  schema.sql           # Latest schema snapshot / reference
   seed.sql             # Family members, categories, default config
+  migrations/          # Numbered SQL migrations (primary schema path)
+  migrate.js           # Migration runner
+scripts/
+  send-reminders.js    # Standalone reminder runner
 public/
   index.html + app.js  # Dashboard (my tickets, assigned to me)
   new.html + new.js    # Create ticket form
@@ -46,6 +57,8 @@ public/
   favicon.svg
 deploy/
   family-help.service  # systemd unit
+  family-help-reminders.service  # systemd oneshot reminder runner
+  family-help-reminders.timer    # 30-minute reminder schedule
 planning/              # Feature plans and progress tracking
 ```
 

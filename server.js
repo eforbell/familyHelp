@@ -6,6 +6,8 @@ const fs = require('fs');
 const { Pool } = require('pg');
 
 const { generateMagicHelp, followUpMagicHelp, hasOpenAI } = require('./lib/openai');
+const { buildAssignedTicketNotificationPayload, sendBrrrNotification } = require('./lib/notifications');
+const { getReminderConfig, ticketUrl } = require('./lib/reminder-rules');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -165,6 +167,40 @@ function maskSecret(secret) {
   return `••••${value.slice(-4)}`;
 }
 
+async function sendAssignedTicketNotification(ticket, actorName, assigneeId) {
+  if (!assigneeId) return false;
+
+  const [{ rows: channelRows }, reminderBaseUrl, reminderInterruptionLevel] = await Promise.all([
+    pool.query(`
+      SELECT target_secret
+      FROM member_notification_channels
+      WHERE member_id = $1
+        AND channel_type = 'brrr'
+        AND enabled = TRUE
+        AND target_secret IS NOT NULL
+    `, [assigneeId]),
+    cfg('reminder_base_url'),
+    cfg('reminder_brrr_interruption_level')
+  ]);
+
+  const targetSecret = channelRows[0]?.target_secret;
+  if (!targetSecret) return false;
+
+  const reminderConfig = getReminderConfig({
+    reminder_base_url: reminderBaseUrl,
+    reminder_brrr_interruption_level: reminderInterruptionLevel
+  });
+
+  const payload = buildAssignedTicketNotificationPayload(ticket, {
+    actorName,
+    defaultInterruptionLevel: reminderConfig.interruptionLevel,
+    openUrl: ticketUrl(ticket.id, reminderConfig)
+  });
+
+  await sendBrrrNotification(targetSecret, payload);
+  return true;
+}
+
 async function canMemberViewTicket(ticketId, memberId) {
   const member = await memberById(memberId);
   if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
@@ -255,25 +291,41 @@ app.get('/api/tickets', async (req, res) => {
 
 app.post('/api/tickets', async (req, res) => {
   try {
-    const { title, description, category_id, priority, created_by, link_url } = req.body;
+    const { title, description, category_id, priority, created_by, assigned_to, link_url } = req.body;
     if (!title || title.trim().length < 10) return res.status(400).json({ error: 'Title must be at least 10 characters' });
     if (!description || description.trim().length < 30) return res.status(400).json({ error: 'Description must be at least 30 characters' });
     if (!created_by) return res.status(400).json({ error: 'created_by is required' });
 
+    const creator = await memberById(created_by);
+    if (!creator) return res.status(400).json({ error: 'Valid created_by is required' });
+
+    const nextAssigneeId = assigned_to || null;
+    if (nextAssigneeId && creator.role !== 'parent') {
+      return res.status(403).json({ error: 'Only parents can assign a ticket during creation' });
+    }
+
+    const assignee = nextAssigneeId ? await memberById(nextAssigneeId) : null;
+    if (nextAssigneeId && !assignee) return res.status(400).json({ error: 'Valid assigned_to is required' });
+
     const r = await pool.query(
-      `INSERT INTO tickets (title, description, category_id, priority, created_by, link_url)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [title.trim(), description.trim(), category_id || null, priority || 'normal', created_by, link_url || null]
+      `INSERT INTO tickets (title, description, category_id, priority, created_by, assigned_to, link_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [title.trim(), description.trim(), category_id || null, priority || 'normal', created_by, nextAssigneeId, link_url || null]
     );
 
     const ticket = r.rows[0];
-    const creator = await pool.query('SELECT name FROM family_members WHERE id=$1', [created_by]);
-    await addSystemComment(ticket.id, `Ticket created by ${creator.rows[0]?.name || 'Unknown'}`);
+    await addSystemComment(ticket.id, `Ticket created by ${creator.name || 'Unknown'}`);
+    if (assignee) {
+      await addSystemComment(ticket.id, `${creator.name || 'Someone'} assigned this to ${assignee.name}`);
+    }
 
     // Fire-and-forget MagicHelp for AI-eligible categories
     tryAutoMagicHelp(ticket).catch(err => console.error('MagicHelp auto error:', err.message));
-
     res.status(201).json(ticket);
+    if (assignee) {
+      sendAssignedTicketNotification(ticket, creator.name, assignee.id)
+        .catch(err => console.error(`Assigned-ticket notification failed for #${ticket.id}:`, err.message));
+    }
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

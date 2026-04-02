@@ -135,7 +135,13 @@ Then `sudo nginx -t && sudo systemctl reload nginx`.
 ```bash
 ./deploy/deploy.sh                    # deploy origin/main
 ./deploy/deploy.sh origin/my-branch   # test a branch in production
+./deploy/deploy.sh --restore-stash    # restore last auto-stashed local changes
 ```
+
+Deploy behavior notes:
+- auto-stashes a dirty deploy checkout by default
+- set `AUTO_STASH=0` if you want deploys to fail instead
+- use `FORCE_DEPLOY=1` only when you intentionally want to bypass the safety check
 
 ### Erebor Rollout
 

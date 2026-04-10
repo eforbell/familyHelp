@@ -62,10 +62,14 @@ cp .env.example .env
 
 ```bash
 npm run db:migrate
-psql $DATABASE_URL -f db/seed.sql
 ```
 
-Fresh installs should use `npm run db:migrate` as the primary schema path, then apply [db/seed.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/seed.sql). [db/schema.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/schema.sql) remains as a latest-schema snapshot/reference file. Deploys run migrations automatically via [deploy/deploy.sh](/Volumes/DATA/workspace/homeApps/familyHelp/deploy/deploy.sh).
+Fresh installs should use `npm run db:migrate` as the primary schema path, then complete the
+browser setup flow to create household members, optional Settings PIN, and starter categories.
+[db/schema.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/schema.sql) remains as a
+latest-schema snapshot/reference file. [db/seed.sql](/Volumes/DATA/workspace/homeApps/familyHelp/db/seed.sql)
+is legacy/dev starter data and should not be required for normal production bootstrap.
+Deploys run migrations automatically via [deploy/deploy.sh](/Volumes/DATA/workspace/homeApps/familyHelp/deploy/deploy.sh).
 
 For local dev, a Docker Compose Postgres is included on port `5434`:
 
@@ -73,7 +77,7 @@ For local dev, a Docker Compose Postgres is included on port `5434`:
 docker compose up -d
 cp .env.example .env
 npm run db:migrate
-psql $DATABASE_URL -f db/seed.sql
+npm start
 ```
 
 ### Environment variables

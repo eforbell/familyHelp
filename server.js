@@ -23,18 +23,16 @@ const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gi
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ── Config helpers ──────────────────────────────────────────────────────────
 
-async function cfg(key) {
-  const r = await pool.query('SELECT value FROM app_config WHERE key=$1', [key]);
+async function cfg(key, queryable = pool) {
+  const r = await queryable.query('SELECT value FROM app_config WHERE key=$1', [key]);
   return r.rows[0]?.value ?? null;
 }
 
-async function setCfg(key, value) {
-  await pool.query(
+async function setCfg(key, value, queryable = pool) {
+  await queryable.query(
     'INSERT INTO app_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
     [key, value]
   );
@@ -92,8 +90,8 @@ function settingsCookieOptions(req) {
   return { httpOnly: true, sameSite: 'lax', secure: req.secure || forwardedProto === 'https', maxAge: SETTINGS_SESSION_MINUTES * 60 * 1000, path: '/' };
 }
 
-async function settingsPinConfigured() {
-  const hash = await cfg('settings_pin_hash');
+async function settingsPinConfigured(queryable = pool) {
+  const hash = await cfg('settings_pin_hash', queryable);
   return !!hash;
 }
 
@@ -143,6 +141,178 @@ async function bootstrapPin() {
   await setCfg('settings_pin_version', '1');
   console.log('Settings PIN bootstrapped from environment.');
 }
+
+const DEFAULT_TICKET_CATEGORIES = [
+  ['IT / Tech', 'Describe what you see on screen, what you expected to happen, and what you already tried.', true, 1],
+  ['Homework', 'What subject? What specific problem or concept are you stuck on? Show your work so far.', true, 2],
+  ['Chores', 'What needs to be done, where, and by when?', false, 3],
+  ['House Maintenance', 'Describe the issue, where in the house, and how urgent it is. Include photos if possible.', false, 4],
+  ['Errands', 'What needs to happen, where, and any deadlines?', false, 5],
+  ['Other', 'Give as much detail as you can so someone can help.', false, 6],
+];
+
+const DEFAULT_APP_CONFIG = [
+  ['magic_help_enabled', 'false'],
+  ['magic_help_prompt', 'You are a helpful family assistant. For IT issues, provide clear troubleshooting steps. For homework, explain concepts and guide toward the answer without giving it directly. For house issues, provide practical advice but recommend a professional for anything involving electricity, plumbing, or structural work. Keep responses concise and friendly.'],
+  ['reminders_enabled', 'false'],
+  ['reminder_brrr_interruption_level', 'active'],
+  ['reminder_base_url', ''],
+  ['reminder_threshold_hours_urgent', '4'],
+  ['reminder_threshold_hours_normal', '24'],
+  ['reminder_threshold_hours_long_term', '168'],
+  ['reminder_repeat_hours_urgent', '24'],
+  ['reminder_repeat_hours_normal', '48'],
+  ['reminder_repeat_hours_long_term', '168'],
+];
+
+async function memberCount(queryable = pool) {
+  const { rows } = await queryable.query('SELECT COUNT(*)::int AS count FROM family_members');
+  return Number(rows[0]?.count || 0);
+}
+
+async function categoryCount(queryable = pool) {
+  const { rows } = await queryable.query('SELECT COUNT(*)::int AS count FROM ticket_categories');
+  return Number(rows[0]?.count || 0);
+}
+
+async function bootstrapState(queryable = pool) {
+  const [members, categories, pinConfigured] = await Promise.all([
+    memberCount(queryable),
+    categoryCount(queryable),
+    settingsPinConfigured(queryable),
+  ]);
+  const needsHousehold = members === 0;
+  const needsAuth = !pinConfigured;
+  const needsStarterContent = categories === 0;
+  return {
+    status: needsHousehold || needsAuth || needsStarterContent ? 'needs_setup' : 'ready',
+    app: 'family-help',
+    version: '1.0.0',
+    bootstrap: {
+      needs_household: needsHousehold,
+      needs_auth: needsAuth,
+      needs_starter_content: needsStarterContent,
+      ready: !needsHousehold && !needsAuth && !needsStarterContent,
+    },
+    counts: {
+      family_members: members,
+      ticket_categories: categories,
+    },
+  };
+}
+
+async function withPoolTransaction(fn) {
+  if (typeof pool.connect !== 'function') return fn(pool);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+const BOOTSTRAP_PARENT_AVATARS = ['👨', '👩', '🧑'];
+const BOOTSTRAP_KID_AVATARS = ['🧒', '👧', '👦'];
+
+function normalizeBootstrapMembers(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  let parentIndex = 0;
+  let kidIndex = 0;
+
+  return input
+    .map(member => ({
+      name: String(member?.name || '').trim(),
+      role: member?.role === 'kid' ? 'kid' : 'parent',
+    }))
+    .filter(member => member.name)
+    .filter(member => {
+      const key = member.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(member => {
+      const index = member.role === 'parent' ? parentIndex++ : kidIndex++;
+      const avatars = member.role === 'parent' ? BOOTSTRAP_PARENT_AVATARS : BOOTSTRAP_KID_AVATARS;
+      return { ...member, avatar_emoji: avatars[index % avatars.length] };
+    });
+}
+
+async function installStarterContent(queryable = pool) {
+  for (const [name, guidance, aiEligible, sortOrder] of DEFAULT_TICKET_CATEGORIES) {
+    await queryable.query(
+      `INSERT INTO ticket_categories (name, guidance, ai_eligible, sort_order)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (name) DO NOTHING`,
+      [name, guidance, aiEligible, sortOrder]
+    );
+  }
+
+  for (const [key, value] of DEFAULT_APP_CONFIG) {
+    await queryable.query(
+      `INSERT INTO app_config (key, value)
+       VALUES ($1, $2)
+       ON CONFLICT (key) DO NOTHING`,
+      [key, value]
+    );
+  }
+}
+
+async function bootstrapSetupFromEnv() {
+  await bootstrapPin();
+}
+
+async function redirectToSetupIfNeeded(req, res, target = 'setup') {
+  try {
+    const state = await bootstrapState();
+    if (state.bootstrap.needs_household) {
+      res.redirect(target);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+    return true;
+  }
+}
+
+const PAGE_BOOTSTRAP_TARGETS = new Map([
+  ['/', 'setup'],
+  ['/index.html', 'setup'],
+  ['/new', 'setup'],
+  ['/new.html', 'setup'],
+  ['/board', 'setup'],
+  ['/board.html', 'setup'],
+  ['/settings', 'setup'],
+  ['/settings.html', 'setup'],
+]);
+
+app.use(async (req, res, next) => {
+  if (req.method !== 'GET') return next();
+  if (req.path.startsWith('/api/')) return next();
+  if (req.path === '/setup' || req.path === '/setup.html') return next();
+  if (req.path.startsWith('/uploads/')) return next();
+  if (req.path.startsWith('/ticket/')) {
+    if (await redirectToSetupIfNeeded(req, res, '../setup')) return;
+    return next();
+  }
+
+  const target = PAGE_BOOTSTRAP_TARGETS.get(req.path);
+  if (!target) return next();
+  if (await redirectToSetupIfNeeded(req, res, target)) return;
+  return next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ── Touch updated_at helper ─────────────────────────────────────────────────
 
@@ -227,6 +397,114 @@ async function canManageTicketReminders(ticketId, memberId) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ── Health / readiness / bootstrap ─────────────────────────────────────────
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'family-help',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/ready', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({
+      status: 'ok',
+      app: 'family-help',
+      checks: { db: 'ok' },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      app: 'family-help',
+      checks: { db: 'error' },
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+app.get('/api/bootstrap', async (_req, res) => {
+  try {
+    res.json(await bootstrapState());
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/bootstrap/starter-content', async (_req, res) => {
+  try {
+    if ((await categoryCount()) > 0) {
+      return res.status(409).json({ error: 'Starter content already installed', code: 'starter_content_exists' });
+    }
+    await withPoolTransaction(installStarterContent);
+    res.status(201).json({ ok: true, bootstrap: (await bootstrapState()).bootstrap });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/bootstrap/household', async (req, res) => {
+  try {
+    const state = await bootstrapState();
+    if (!state.bootstrap.needs_household) {
+      return res.status(409).json({ error: 'Household already initialized', code: 'household_already_initialized' });
+    }
+
+    const members = normalizeBootstrapMembers(req.body?.members);
+    const pin = String(req.body?.settings_pin || '').trim();
+    const installStarter = req.body?.install_starter_content !== false;
+
+    if (!members.length) {
+      return res.status(400).json({ error: 'At least one household member is required', code: 'members_required' });
+    }
+    if (!members.some(member => member.role === 'parent')) {
+      return res.status(400).json({ error: 'At least one parent is required', code: 'parent_required' });
+    }
+    if (pin && pin.length < 4) {
+      return res.status(400).json({ error: 'PIN must be at least 4 characters', code: 'invalid_pin' });
+    }
+
+    const result = await withPoolTransaction(async (queryable) => {
+      const createdMembers = [];
+      for (const member of members) {
+        const { rows } = await queryable.query(`
+          INSERT INTO family_members (name, role, avatar_emoji)
+          VALUES ($1, $2, $3)
+          RETURNING id, name, role, avatar_emoji
+        `, [member.name, member.role, member.avatar_emoji]);
+        createdMembers.push(rows[0]);
+      }
+
+      const pinWasConfigured = await settingsPinConfigured(queryable);
+      if (pin && !pinWasConfigured) {
+        await setCfg('settings_auth_secret', crypto.randomBytes(32).toString('hex'), queryable);
+        await setCfg('settings_pin_hash', hashPin(pin), queryable);
+        await setCfg('settings_pin_version', '1', queryable);
+      }
+
+      if (installStarter) {
+        await installStarterContent(queryable);
+      }
+
+      return {
+        members: createdMembers,
+        pin_configured: pin ? true : pinWasConfigured,
+      };
+    });
+
+    if (pin) {
+      await issueSettingsSession(req, res);
+    }
+
+    res.status(201).json({
+      ok: true,
+      created_members: result.members,
+      pin_configured: result.pin_configured,
+      bootstrap: (await bootstrapState()).bootstrap,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ── Members ─────────────────────────────────────────────────────────────────
 
@@ -1002,6 +1280,19 @@ app.delete('/api/attachments/:id', async (req, res) => {
 
 // ── HTML page routes (serve files for clean URLs) ───────────────────────────
 
+app.get('/', async (req, res) => {
+  if (await redirectToSetupIfNeeded(req, res, 'setup')) return;
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/setup', async (req, res) => {
+  try {
+    const state = await bootstrapState();
+    if (!state.bootstrap.needs_household) return res.redirect('./');
+    res.sendFile(path.join(__dirname, 'public', 'setup.html'));
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
 app.get('/new', (req, res) => res.sendFile(path.join(__dirname, 'public', 'new.html')));
 app.get('/ticket/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ticket.html')));
 app.get('/board', (req, res) => res.sendFile(path.join(__dirname, 'public', 'board.html')));
@@ -1010,7 +1301,7 @@ app.get('/settings', (req, res) => res.sendFile(path.join(__dirname, 'public', '
 // ── Start ───────────────────────────────────────────────────────────────────
 
 if (require.main === module) {
-  bootstrapPin().then(() => {
+  bootstrapSetupFromEnv().then(() => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`familyHelp listening on port ${PORT}`);
     });

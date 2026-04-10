@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Set Up Family HelpDesk</title>
+  <link rel="icon" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1><span>?!</span> Family HelpDesk Setup</h1>
+    <div class="header-right"></div>
+  </header>
+
+  <main class="container">
+    <div class="card">
+      <h2 style="margin-bottom:0.5rem;">Welcome</h2>
+      <p style="color:var(--text-muted);line-height:1.6;">
+        This Family HelpDesk install is ready, but it needs a household before anyone can file or manage help requests.
+        Create your first family members below. Starter ticket categories are installed by default.
+      </p>
+      <div id="setupBootstrapStatus" class="setup-status setup-info" style="margin-top:1rem;">Checking setup status…</div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:1rem;">Household</h2>
+      <div class="form-group">
+        <label for="setupParent1">Parent / admin</label>
+        <input type="text" id="setupParent1" placeholder="Eric">
+      </div>
+      <div class="form-group">
+        <label for="setupParent2">Second parent (optional)</label>
+        <input type="text" id="setupParent2" placeholder="Alex">
+      </div>
+      <div class="form-group">
+        <label for="setupKids">Kids or other members (optional)</label>
+        <textarea id="setupKids" rows="4" placeholder="One per line, or separate with commas&#10;Jordan&#10;Casey"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:1rem;">Settings PIN</h2>
+      <p class="form-hint" style="margin-bottom:1rem;">
+        Optional but recommended. This protects Settings, categories, reminders, and AI configuration.
+      </p>
+      <div class="form-group">
+        <label for="setupPin">Create PIN (optional)</label>
+        <input type="password" id="setupPin" autocomplete="new-password" placeholder="At least 4 characters">
+      </div>
+      <div class="form-group">
+        <label for="setupPinConfirm">Confirm PIN</label>
+        <input type="password" id="setupPinConfirm" autocomplete="new-password" placeholder="Repeat PIN">
+      </div>
+      <label style="display:flex;align-items:center;gap:0.5rem;color:var(--text-muted);font-size:0.9rem;">
+        <input type="checkbox" id="setupStarterContent" checked>
+        Install starter ticket categories and default settings
+      </label>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <a href="./" class="btn btn-secondary">Back</a>
+        <button class="btn btn-primary" id="setupSubmitBtn">Create Household</button>
+      </div>
+      <div id="setupSubmitStatus" class="setup-status setup-info" style="display:none;margin-top:1rem;"></div>
+    </div>
+  </main>
+
+  <script src="setup.js"></script>
+</body>
+</html>

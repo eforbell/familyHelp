@@ -223,6 +223,25 @@ textarea { resize: vertical; min-height: 100px; }
   margin-top: 0.25rem;
 }
 
+.setup-status {
+  font-size: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.setup-info { background: transparent; }
+.setup-ok {
+  color: var(--accent);
+  border-color: rgba(76, 175, 80, 0.35);
+  background: rgba(76, 175, 80, 0.08);
+}
+.setup-error {
+  color: var(--urgent);
+  border-color: rgba(231, 76, 60, 0.35);
+  background: rgba(231, 76, 60, 0.08);
+}
+
 .char-count {
   font-size: 0.72rem;
   color: var(--text-muted);

@@ -23,7 +23,7 @@ npm run reminders:dry-run
 
 # Database setup (run once on a new Postgres instance)
 npm run db:migrate
-psql $DATABASE_URL -f db/seed.sql
+# then open the browser setup flow to create household members / starter categories
 ```
 
 For local dev, a Docker Compose Postgres is included on port `5434`. The checked-in `.env.example` points at that default container.
@@ -42,7 +42,7 @@ lib/
   reminder-rules.js    # Reminder cadence and staleness helpers
 db/
   schema.sql           # Latest schema snapshot / reference
-  seed.sql             # Family members, categories, default config
+  seed.sql             # Legacy/dev starter data; browser setup is canonical first-run path
   migrations/          # Numbered SQL migrations (primary schema path)
   migrate.js           # Migration runner
 scripts/

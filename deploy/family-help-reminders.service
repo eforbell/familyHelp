@@ -1,10 +1,10 @@
 [Unit]
-Description=Forbell Family HelpDesk reminder runner
+Description=Family HelpDesk reminder runner
 After=network.target postgresql.service
 
 [Service]
 Type=oneshot
-User=forbell
+User=your-username
 WorkingDirectory=/data/apps/familyHelp
 EnvironmentFile=/data/apps/familyHelp/.env
 Environment=NODE_ENV=production

@@ -2,7 +2,7 @@
 
 **HelpDesk for my home.** A ticket-based system where family members request help, document problems, attach screenshots, and get AI-powered first-tier support. Parents assign and delegate. Everyone pitches in.
 
-Built for the Forbell household. Runs on a home Ubuntu server behind Tailscale + nginx.
+Built for a home household. Runs on a home Ubuntu server behind Tailscale + nginx.
 
 ## What it does
 

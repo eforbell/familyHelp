@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## What This Is
 
-Family HelpDesk for the Forbell household. A ticket-based system where family members can
+Family HelpDesk for your household. A ticket-based system where family members can
 request help, document problems, and get assigned helpers. Parents are admins. The system
 enforces detail in requests (minimum character counts) so problems are well-documented.
 

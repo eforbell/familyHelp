@@ -2,9 +2,9 @@
 
 INSERT INTO family_members (name, role, avatar_emoji) VALUES
   ('Eric',   'parent', '👨'),
-  ('Alex',    'parent', '👩'),
-  ('Jordan',   'kid',    '🧑'),
-  ('Casey', 'kid',    '👧')
+  ('Alex',   'parent', '👩'),
+  ('Jordan', 'kid',    '🧑'),
+  ('Casey',  'kid',    '👧')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO ticket_categories (name, guidance, ai_eligible, sort_order) VALUES

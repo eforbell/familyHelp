@@ -1,7 +1,7 @@
 {
   "name": "family-help",
   "version": "1.0.0",
-  "description": "HelpDesk for the Forbell household",
+  "description": "HelpDesk for the family household",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

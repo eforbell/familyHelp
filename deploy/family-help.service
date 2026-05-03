@@ -1,10 +1,10 @@
 [Unit]
-Description=Forbell Family HelpDesk
+Description=Family HelpDesk
 After=network.target postgresql.service
 
 [Service]
 Type=simple
-User=forbell
+User=your-username
 WorkingDirectory=/data/apps/familyHelp
 EnvironmentFile=/data/apps/familyHelp/.env
 Environment=NODE_ENV=production

@@ -199,7 +199,7 @@ textarea, select {
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-family: inherit;
   transition: border-color 0.15s;
 }

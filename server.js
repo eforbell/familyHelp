@@ -11,6 +11,27 @@ const { getReminderConfig, ticketUrl } = require('./lib/reminder-rules');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const DEFAULT_SOVEREIGN_FONT_SANS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap';
+const DEFAULT_SOVEREIGN_FONT_MONO_CSS_URL = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap';
+
+function buildSovereignFontsCss() {
+  const source = String(process.env.SOVEREIGN_FONT_SOURCE || 'google').trim().toLowerCase();
+  if (source === 'off') return '/* Sovereign fonts disabled via SOVEREIGN_FONT_SOURCE=off */\n';
+
+  const isLocal = source === 'local';
+  const sansUrl = (isLocal ? process.env.SOVEREIGN_FONT_SANS_CSS_URL_LOCAL : process.env.SOVEREIGN_FONT_SANS_CSS_URL)
+    || DEFAULT_SOVEREIGN_FONT_SANS_CSS_URL;
+  const monoUrl = (isLocal ? process.env.SOVEREIGN_FONT_MONO_CSS_URL_LOCAL : process.env.SOVEREIGN_FONT_MONO_CSS_URL)
+    || DEFAULT_SOVEREIGN_FONT_MONO_CSS_URL;
+
+  return [
+    '/* Generated from environment: /sovereign-fonts.css */',
+    `@import url('${sansUrl}');`,
+    `@import url('${monoUrl}');`,
+    '',
+  ].join('\n');
+}
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const SETTINGS_SESSION_COOKIE = 'fh_settings_session';
@@ -309,6 +330,12 @@ app.use(async (req, res, next) => {
   if (!target) return next();
   if (await redirectToSetupIfNeeded(req, res, target)) return;
   return next();
+});
+
+app.get('/sovereign-fonts.css', (_req, res) => {
+  res.set('content-type', 'text/css; charset=utf-8');
+  res.set('cache-control', 'public, max-age=300');
+  res.send(buildSovereignFontsCss());
 });
 
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));

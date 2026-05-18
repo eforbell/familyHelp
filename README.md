@@ -90,6 +90,15 @@ npm start
 | `OPENAI_API_KEY` | No | -- | Enables MagicHelp AI |
 | `OPENAI_MODEL` | No | gpt-4o-mini | Any OpenAI chat model |
 
+### Sovereign chassis migration note (phase 1)
+
+`public/help-skin.css` currently uses legacy app token names (`--bg-card`, `--bg-input`, `--text-muted`) that are still provided by `public/style.css`.
+This is intentional phase-1 tech debt for compatibility while the chassis rollout lands.
+
+Planned phase-2 cleanup:
+- migrate those selectors to chassis-aligned tokens
+- remove legacy token reliance before retiring `public/style.css`
+
 ### Run
 
 ```bash

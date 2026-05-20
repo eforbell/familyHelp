@@ -9,7 +9,9 @@
     "test": "node --test",
     "db:migrate": "node db/migrate.js",
     "reminders:run": "node scripts/send-reminders.js",
-    "reminders:dry-run": "node scripts/send-reminders.js --dry-run"
+    "reminders:dry-run": "node scripts/send-reminders.js --dry-run",
+    "sweep:run": "node scripts/sweep-resolved.js",
+    "sweep:dry-run": "node scripts/sweep-resolved.js --dry-run"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

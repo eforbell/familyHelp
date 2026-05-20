@@ -1,0 +1,10 @@
+[Unit]
+Description=Sweep stale resolved HelpDesk tickets daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=family-help-sweep.service
+
+[Install]
+WantedBy=timers.target

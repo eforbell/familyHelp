@@ -4,3 +4,5 @@ uploads/*
 !uploads/.gitkeep
 .deploy-last-stash-ref
 .omx/
+.omc/
+test-results/

@@ -1,6 +1,7 @@
 {
   "name": "family-help",
   "version": "1.0.0",
+  "license": "MIT",
   "description": "HelpDesk for the family household",
   "main": "server.js",
   "scripts": {

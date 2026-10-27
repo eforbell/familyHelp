@@ -11,6 +11,9 @@ const { getReminderConfig, ticketUrl } = require('./lib/reminder-rules');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+// Loopback unless HOST says otherwise: under Home Base only nginx should reach the app, never the tailnet
+// directly (Feature-10 SID-002). Set HOST=0.0.0.0 to expose it on purpose.
+const LISTEN_HOST = process.env.HOST || '127.0.0.1';
 const DEFAULT_SOVEREIGN_FONT_SANS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap';
 const DEFAULT_SOVEREIGN_FONT_MONO_CSS_URL = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap';
 
@@ -1329,7 +1332,7 @@ app.get('/settings', (req, res) => res.sendFile(path.join(__dirname, 'public', '
 
 if (require.main === module) {
   bootstrapSetupFromEnv().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, LISTEN_HOST, () => {
       console.log(`familyHelp listening on port ${PORT}`);
     });
   });

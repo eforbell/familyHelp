@@ -9,9 +9,10 @@ const {
   notificationInterruptionLevel
 } = require('../lib/notifications');
 
-test('normalizeBrrrTarget accepts raw secret or full URL', () => {
+test('normalizeBrrrTarget accepts raw secret or a full URL on the configured service', () => {
   assert.equal(normalizeBrrrTarget('abc123secret456'), 'https://api.brrr.now/v1/abc123secret456');
-  assert.equal(normalizeBrrrTarget('https://example.com/hook'), 'https://example.com/hook');
+  assert.equal(normalizeBrrrTarget('https://api.brrr.now/v1/abc123secret456'), 'https://api.brrr.now/v1/abc123secret456');
+  assert.throws(() => normalizeBrrrTarget('https://example.com/hook'), /different push service/);
 });
 
 test('notificationInterruptionLevel escalates urgent tickets', () => {

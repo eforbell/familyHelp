@@ -56,7 +56,7 @@ async function unlock() {
 }
 
 async function lock() {
-  await api('api/settings/lock', { method: 'POST' });
+  await api('api/settings/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
   document.getElementById('settingsContent').style.display = 'none';
   document.getElementById('pinScreen').style.display = 'flex';
   document.getElementById('pinInput').value = '';
@@ -116,7 +116,7 @@ async function toggleAiEligible(id, enabled) {
 async function deleteCategory(id) {
   if (!confirm('Remove this category?')) return;
   try {
-    await api(`api/categories/${id}`, { method: 'DELETE' });
+    await api(`api/categories/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     loadCategories();
   } catch (err) { alert(err.message); }
 }
@@ -240,7 +240,7 @@ async function clearNotificationChannel(memberId) {
   const verificationRequest = Symbol();
   pushRegistrationRequests.set(memberId, verificationRequest);
   try {
-    await api(`api/notification-channels/${memberId}/brrr`, { method: 'DELETE' });
+    await api(`api/notification-channels/${memberId}/brrr`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     if (pushRegistrationRequests.get(memberId) !== verificationRequest) return;
     await loadNotificationChannels();
   } catch (err) {

@@ -379,7 +379,7 @@ app.use('/uploads', async (req, res, next) => {
   try {
     let filename = null;
     try { filename = decodeURIComponent(req.path.slice(1)); } catch { filename = null; }
-    const { rows } = filename && !filename.includes('/')
+    const { rows } = filename
       ? await pool.query('SELECT ticket_id FROM ticket_attachments WHERE filename = $1', [filename])
       : { rows: [] };
     const access = rows.length ? await canMemberViewTicket(req, rows[0].ticket_id) : { ok: false };
@@ -1521,6 +1521,7 @@ if (require.main === module) {
 // Tests rebuild the identity with another environment; the middleware above reads `suite` on every request.
 function setSuiteIdentityForTests(env, options) {
   suite = createSuiteIdentity(env, { findLinked: findLinkedMember, ...options });
+  return suite;
 }
 
 module.exports = { app, pool, setSuiteIdentityForTests };

@@ -412,3 +412,42 @@ test('in tailnet mode the pages show the household account: no picker, no PIN, n
   assert.match(block, /id="setupPinConfirm"/);
   assert.match(page('setup.js'), /if \(me\?\.mode === 'tailnet'\) document\.getElementById\('setupPinFields'\)\.style\.display = 'none';/);
 });
+
+test('if the gate ever let a kid past, the handlers still refuse a parent\'s work', async () => {
+  // The kid allowlist refuses all of this first; this checks the handlers' own checks behind it.
+  const db = new Db();
+  const suite = setSuiteIdentityForTests(TAILNET, { reader: snapshotOf(MEMBERS) });
+  const KID_MEMBER = { memberId: 'm_kid', name: 'Kid', role: 'kid' };
+  suite.requireMember = (req, _res, next) => { req.suiteMember = KID_MEMBER; req.familyMember = db.members[1]; next(); };
+  pool.query = db.query.bind(db);
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await new Promise((resolve) => server.once('listening', resolve));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const call = (method, route, body) => fetch(`${base}${route}`, {
+      method, redirect: 'manual', headers: { origin: ORIGIN, 'content-type': 'application/json' }, body: body && JSON.stringify(body),
+    });
+    for (const [method, route, body] of [
+      ['GET', '/api/config'], ['PUT', '/api/config', { key: 'magic_help_enabled', value: 'true' }], ['GET', '/api/notification-channels'],
+      ['POST', '/api/categories', { name: 'Games' }], ['DELETE', '/api/categories/1'],
+    ]) {
+      const res = await call(method, route, body);
+      assert.equal(res.status, 403, `${method} ${route}`);
+      assert.equal((await res.json()).code, 'parent_only', `${method} ${route}`);
+    }
+    assert.equal((await call('GET', '/api/suite/links')).status, 403);
+    assert.equal((await call('PUT', '/api/suite/links/2', { suite_member_id: 'm_kid' })).status, 403);
+    assert.equal((await call('GET', '/link')).status, 403);
+    assert.equal((await call('DELETE', '/api/attachments/5?member_id=1')).status, 403);
+    assert.deepEqual(await (await call('GET', '/api/settings/status')).json(), { configured: true, unlocked: false, tailnet: true });
+    // A kid's counts are their own tickets'.
+    assert.equal((await call('GET', '/api/stats?member_id=1')).status, 200);
+    assert.match(db.reads.at(-1).sql, /AND \(created_by = \$1 OR assigned_to = \$2\)/);
+    assert.deepEqual(db.reads.at(-1).params, [2, 2]);
+    assert.equal(db.writes.length, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    pool.query = ORIGINAL_QUERY;
+    setSuiteIdentityForTests({});
+  }
+});

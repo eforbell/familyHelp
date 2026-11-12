@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS family_members (
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('parent', 'kid')),
   avatar_emoji TEXT DEFAULT '👤',
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  suite_member_id TEXT UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS app_config (

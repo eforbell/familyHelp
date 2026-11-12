@@ -154,6 +154,12 @@ test('tailnet mode takes writes only as JSON from the app\'s own origin', async 
       assert.equal(res.headers.get('cache-control'), 'no-store');
       assert.equal((await res.json()).reason, reason);
     }
+    // The guard runs before anything reads the body: a broken body from elsewhere is refused for where it came from.
+    const broken = await fetch(`${base}/api/bootstrap/household`, {
+      method: 'POST', headers: { ...PARENT_HEADERS, origin: 'https://smith-pulse.example-tailnet.ts.net', 'content-type': 'application/json' }, body: '{broken',
+    });
+    assert.equal(broken.status, 403);
+    assert.equal((await broken.json()).reason, 'origin_mismatch');
     const res = await setup(JSON_WRITE);
     assert.equal(res.status, 409, 'through the guard and the gate to the handler');
     assert.equal((await res.json()).code, 'household_already_initialized');
@@ -305,7 +311,7 @@ test('a parent nobody has linked reaches the link page and setup, and nothing ab
       assert.equal(res.status, 303, route);
       assert.equal(res.headers.get('location'), '/help/link', route);
     }
-    for (const route of ['/api/members', '/api/me', '/api/categories', '/api/tickets?member_id=1', '/api/settings/status',
+    for (const route of ['/api/members', '/API/me', '/api/me/', '/api/categories', '/api/tickets?member_id=1', '/api/settings/status',
       '/api/suite/links/01', '/API/suite/links', '/api/suite/links/', '/api/bootstrap/', '/API/bootstrap']) {
       const res = await get(route);
       assert.equal(res.status, 403, route);
@@ -322,6 +328,8 @@ test('a parent nobody has linked reaches the link page and setup, and nothing ab
     assert.equal((await get('/link')).status, 200);
     assert.equal((await get('/api/suite/links')).status, 200);
     assert.equal((await get('/api/suite/links/1')).status, 404);
+    // Who am I: nobody yet, in tailnet mode (the setup page hides its PIN fields on that).
+    assert.deepEqual(await (await get('/api/me')).json(), { mode: 'tailnet', member: null });
     // Setup redirects home once a household exists; the gate then sends them to the link page.
     assert.equal((await get('/setup')).headers.get('location'), './');
     // Setup's status says only whether a household is still needed: no counts, no PIN or starter-content state.

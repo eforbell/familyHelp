@@ -2,8 +2,10 @@
 
 let currentMember = JSON.parse(localStorage.getItem('fh_member') || 'null');
 let members = [];
+let suiteTailnet = false;
 
 async function init() {
+  suiteTailnet = await loadSuiteMe();
   members = await api('api/members');
   if (!currentMember) {
     openMemberPicker();
@@ -18,9 +20,11 @@ function updateMemberBadge() {
   if (currentMember) {
     badge.textContent = `${currentMember.avatar_emoji} ${currentMember.name}`;
   }
+  if (suiteTailnet) badge.style.cursor = 'default';
 }
 
 function openMemberPicker() {
+  if (suiteTailnet) return;
   const grid = document.getElementById('memberGrid');
   grid.innerHTML = '';
   for (const m of members) {
@@ -78,6 +82,16 @@ function renderTicketList(containerId, tickets, emptyMsg) {
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────
+
+// Tailnet mode: the household account (api/me) is who this is, so there is no picker to switch, and a kid has no
+// Settings. Local mode keeps the picker's choice, as before.
+async function loadSuiteMe() {
+  const me = await api('api/me');
+  if (me.mode !== 'tailnet' || !me.member) return false;
+  currentMember = me.member;
+  if (me.member.role !== 'parent') document.querySelector('nav a[href$="settings"]')?.remove();
+  return true;
+}
 
 async function api(url, opts) {
   const res = await fetch(url, opts);

@@ -239,6 +239,10 @@ test('a parent may use everything, settings included, by the directory\'s role, 
     assert.equal((await parent('GET', '/api/tickets/11?member_id=2')).status, 200);
     assert.equal((await parent('PUT', '/api/tickets/13', { priority: 'urgent', member_id: 3 })).status, 200);
     assert.equal((await parent('DELETE', '/api/attachments/5?member_id=3')).status, 404, 'past the role check; no such attachment');
+    // A parent may assign a new ticket, though the row calls them a kid.
+    const ticket = { title: 'Dishwasher is leaking', description: 'Water pools under the dishwasher after every run.', assigned_to: 2, created_by: 3 };
+    assert.equal((await parent('POST', '/api/tickets', ticket)).status, 201);
+    assert.deepEqual(db.written('tickets').map((write) => write.params.slice(4, 6)), [[1, 2]]);
     // Their whole list: no kid filter.
     await parent('GET', '/api/tickets?member_id=2');
     assert.doesNotMatch(db.reads.at(-1).sql, /created_by = \$\d+ OR/);
@@ -378,7 +382,10 @@ test('an uploaded file is shown only to someone who may see its ticket', async (
       assert.ok([303, 404].includes(res.status), `${route}: ${res.status}`);
       if (res.status === 404) assert.equal(res.headers['cache-control'], 'no-store', route);
     }
-    // Another spelling of a file the asker may see is the same file, checked the same way.
+    // Another spelling of a file the asker may see is the same file, checked the same way: percent-encoded too.
+    const encoded = (name) => name.replace(/[a-f]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
+    assert.equal((await get(`/uploads/${encoded(FILES.kids)}`, KID_HEADERS)).status, 200);
+    assert.equal((await get(`/uploads/${encoded(FILES.others)}`, KID_HEADERS)).status, 404);
     assert.equal((await get(`/UPLOADS/${FILES.others}`, PARENT_HEADERS)).status, 200);
     assert.equal((await get(`/uploads//${FILES.others}`, PARENT_HEADERS)).status, 200);
     // A link from the ticket page opens it (a navigation, not the API).

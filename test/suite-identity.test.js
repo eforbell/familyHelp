@@ -154,6 +154,12 @@ test('tailnet mode takes writes only as JSON from the app\'s own origin', async 
       assert.equal(res.headers.get('cache-control'), 'no-store');
       assert.equal((await res.json()).reason, reason);
     }
+    // The guard runs before anything reads the body: a broken body from elsewhere is refused for where it came from.
+    const broken = await fetch(`${base}/api/bootstrap/household`, {
+      method: 'POST', headers: { ...PARENT_HEADERS, origin: 'https://smith-pulse.example-tailnet.ts.net', 'content-type': 'application/json' }, body: '{broken',
+    });
+    assert.equal(broken.status, 403);
+    assert.equal((await broken.json()).reason, 'origin_mismatch');
     const res = await setup(JSON_WRITE);
     assert.equal(res.status, 409, 'through the guard and the gate to the handler');
     assert.equal((await res.json()).code, 'household_already_initialized');

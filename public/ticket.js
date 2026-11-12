@@ -421,7 +421,7 @@ async function handleFiles(files) {
 async function deleteAttachment(id) {
   if (!confirm('Remove this attachment?')) return;
   try {
-    await api(`../api/attachments/${id}?member_id=${currentMember.id}`, { method: 'DELETE' });
+    await api(`../api/attachments/${id}?member_id=${currentMember.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     loadAttachments();
     loadComments();
   } catch (err) { alert(err.message); }

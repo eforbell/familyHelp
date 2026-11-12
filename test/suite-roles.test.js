@@ -140,7 +140,7 @@ function upload(base, ticketId, headers, uploadedBy) {
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="uploaded_by"\r\n\r\n${uploadedBy}\r\n`),
     Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="note.png"\r\nContent-Type: image/png\r\n\r\n`),
-    Buffer.from('not really a png'),
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]),
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
   return fetch(`${base}/api/tickets/${ticketId}/attachments`, {

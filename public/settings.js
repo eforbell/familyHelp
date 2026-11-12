@@ -1,3 +1,5 @@
+// Ignore verification replies superseded by another save, clear, or check.
+const pushRegistrationRequests = new Map();
 /* familyHelp — Settings */
 
 let currentMember = JSON.parse(localStorage.getItem('fh_member') || 'null');
@@ -209,6 +211,8 @@ function renderNotificationChannels() {
 }
 
 async function saveNotificationChannel(memberId) {
+  const verificationRequest = Symbol();
+  pushRegistrationRequests.set(memberId, verificationRequest);
   const enabled = document.getElementById(`notifyEnabled-${memberId}`).checked;
   const label = document.getElementById(`notifyLabel-${memberId}`).value.trim();
   const secret = document.getElementById(`notifySecret-${memberId}`).value.trim();
@@ -222,18 +226,25 @@ async function saveNotificationChannel(memberId) {
         ...(secret ? { secret } : {})
       })
     });
+    if (pushRegistrationRequests.get(memberId) !== verificationRequest) return;
     document.getElementById(`notifySecret-${memberId}`).value = '';
     await loadNotificationChannels();
+    if (pushRegistrationRequests.get(memberId) !== verificationRequest) return;
     document.getElementById(`notify-status-${memberId}`).textContent = `Saved. ${saved.verification.message}`;
-  } catch (err) { alert(err.message); }
+  } catch (err) {
+    if (pushRegistrationRequests.get(memberId) !== verificationRequest) return; alert(err.message); }
 }
 
 async function clearNotificationChannel(memberId) {
   if (!confirm('Clear the saved brrr secret for this member?')) return;
+  const verificationRequest = Symbol();
+  pushRegistrationRequests.set(memberId, verificationRequest);
   try {
     await api(`api/notification-channels/${memberId}/brrr`, { method: 'DELETE' });
+    if (pushRegistrationRequests.get(memberId) !== verificationRequest) return;
     await loadNotificationChannels();
-  } catch (err) { alert(err.message); }
+  } catch (err) {
+    if (pushRegistrationRequests.get(memberId) !== verificationRequest) return; alert(err.message); }
 }
 
 async function loadMagicHelpSettings() {
@@ -294,11 +305,13 @@ function escAttr(s) {
 init();
 
 async function checkNotificationChannel(memberId) {
+  const verificationRequest = Symbol();
+  pushRegistrationRequests.set(memberId, verificationRequest);
   const el = document.getElementById(`notify-status-${memberId}`);
   el.classList.remove('hidden');
   el.textContent = 'Checking saved secret (no notification)…';
   try {
     const data = await api(`api/notification-channels/${memberId}/brrr/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    el.textContent = data.message;
-  } catch (err) { el.textContent = err.message; }
+    if (pushRegistrationRequests.get(memberId) === verificationRequest) el.textContent = data.message;
+  } catch (err) { if (pushRegistrationRequests.get(memberId) === verificationRequest) el.textContent = err.message; }
 }

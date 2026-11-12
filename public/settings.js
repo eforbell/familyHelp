@@ -6,6 +6,7 @@ let currentMember = JSON.parse(localStorage.getItem('fh_member') || 'null');
 let notificationChannels = [];
 
 async function init() {
+  await loadSuiteMe();
   if (currentMember) {
     document.getElementById('memberBadge').textContent = `${currentMember.avatar_emoji} ${currentMember.name}`;
   }
@@ -14,6 +15,17 @@ async function init() {
 
 async function checkAuth() {
   const status = await api('api/settings/status');
+  // Tailnet mode: no PIN. The directory's parent role opens Settings, so instead of Lock, a parent gets the page that
+  // links household accounts to HelpDesk members.
+  if (status.tailnet) {
+    const linkPage = document.createElement('a');
+    linkPage.href = 'link';
+    linkPage.className = 'btn btn-secondary btn-small';
+    linkPage.textContent = 'Household accounts';
+    document.querySelector('button[onclick="lock()"]')?.replaceWith(linkPage);
+    if (status.unlocked) showSettings();
+    return;
+  }
   if (!status.configured) {
     document.getElementById('pinSetup').style.display = 'flex';
     return;
@@ -281,6 +293,16 @@ async function saveMagicHelpSettings() {
     statusEl.textContent = '';
     alert(err.message);
   }
+}
+
+// Tailnet mode: the household account (api/me) is who this is, so there is no picker to switch, and a kid has no
+// Settings. Local mode keeps the picker's choice, as before.
+async function loadSuiteMe() {
+  const me = await api('api/me');
+  if (me.mode !== 'tailnet' || !me.member) return false;
+  currentMember = me.member;
+  if (me.member.role !== 'parent') document.querySelector('nav a[href$="settings"]')?.remove();
+  return true;
 }
 
 async function api(url, opts) {

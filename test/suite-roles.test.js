@@ -389,3 +389,26 @@ test('an uploaded file is shown only to someone who may see its ticket', async (
     assert.equal((await raw(call.base, 'GET', `/uploads/${FILES.orphan}`)).status, 200);
   });
 });
+
+test('in tailnet mode the pages show the household account: no picker, no PIN, no Settings for a kid', () => {
+  const page = (name) => fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8');
+  for (const [name, prefix] of [['app.js', ''], ['board.js', ''], ['new.js', ''], ['ticket.js', '../'], ['settings.js', '']]) {
+    const text = page(name);
+    // Who am I comes first, before the picker's choice is read.
+    assert.ok(text.includes(`const me = await api('${prefix}api/me');`), name);
+    assert.match(text, /if \(me\.mode !== 'tailnet' \|\| !me\.member\) return false;\n {2}currentMember = me\.member;/, name);
+    assert.match(text, /if \(me\.member\.role !== 'parent'\) document\.querySelector\('nav a\[href\$="settings"\]'\)\?\.remove\(\);/, name);
+    const init = text.slice(text.indexOf('async function init()'));
+    assert.ok(init.indexOf('loadSuiteMe()') !== -1 && init.indexOf('loadSuiteMe()') < init.indexOf('currentMember'), `${name}: api/me before the picker`);
+  }
+  // The dashboard's badge doesn't open the picker ("switch") in tailnet mode.
+  assert.match(page('app.js'), /function openMemberPicker\(\) \{\n {2}if \(suiteTailnet\) return;/);
+  // Settings: no PIN prompt or Lock in tailnet mode.
+  assert.match(page('settings.js'), /if \(status\.tailnet\) \{[\s\S]*?replaceWith\(linkPage\);\n {4}if \(status\.unlocked\) showSettings\(\);\n {4}return;\n {2}\}\n {2}if \(!status\.configured\)/);
+  // Setup: both PIN fields sit in the block tailnet mode hides.
+  const setup = page('setup.html');
+  const block = setup.slice(setup.indexOf('<div id="setupPinFields">'), setup.indexOf('id="setupStarterContent"'));
+  assert.match(block, /id="setupPin"/);
+  assert.match(block, /id="setupPinConfirm"/);
+  assert.match(page('setup.js'), /if \(me\?\.mode === 'tailnet'\) document\.getElementById\('setupPinFields'\)\.style\.display = 'none';/);
+});

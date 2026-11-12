@@ -5,6 +5,7 @@ let categories = [];
 let members = [];
 
 async function init() {
+  await loadSuiteMe();
   if (!currentMember) { window.location.href = './'; return; }
   document.getElementById('memberBadge').textContent = `${currentMember.avatar_emoji} ${currentMember.name}`;
 
@@ -94,6 +95,16 @@ async function submitTicket(e) {
     btn.disabled = false;
     btn.textContent = 'Submit Request';
   }
+}
+
+// Tailnet mode: the household account (api/me) is who this is, so there is no picker to switch, and a kid has no
+// Settings. Local mode keeps the picker's choice, as before.
+async function loadSuiteMe() {
+  const me = await api('api/me');
+  if (me.mode !== 'tailnet' || !me.member) return false;
+  currentMember = me.member;
+  if (me.member.role !== 'parent') document.querySelector('nav a[href$="settings"]')?.remove();
+  return true;
 }
 
 async function api(url, opts) {

@@ -5,8 +5,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('setupPinConfirm').addEventListener('keydown', e => {
     if (e.key === 'Enter') submitSetup();
   });
+  await hidePinInTailnet();
   await loadBootstrapState();
 });
+
+// Tailnet mode has no settings PIN: a parent, by the household directory's role, opens Settings.
+async function hidePinInTailnet() {
+  try {
+    const res = await fetch('api/me', { cache: 'no-store' });
+    const me = await res.json();
+    if (me?.mode === 'tailnet') document.getElementById('setupPinFields').style.display = 'none';
+  } catch {
+    // Local mode's setup, as before.
+  }
+}
 
 async function loadBootstrapState() {
   const statusEl = document.getElementById('setupBootstrapStatus');

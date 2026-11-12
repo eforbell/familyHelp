@@ -10,6 +10,7 @@ const { generateMagicHelp, followUpMagicHelp, hasOpenAI } = require('./lib/opena
 const { buildAssignedTicketNotificationPayload, sendBrrrNotification } = require('./lib/notifications');
 const { getReminderConfig, ticketUrl } = require('./lib/reminder-rules');
 const { describe: describeListen, listen } = require('./lib/listen');
+const { createSuiteIdentity } = require('./lib/suite-identity');
 
 const app = express();
 const DEFAULT_SOVEREIGN_FONT_SANS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap';
@@ -43,6 +44,17 @@ const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gi
 
 // Ensure uploads dir exists
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// Which sign-in Family Help trusts (lib/suite-identity.js); a bad configuration refuses to start. In tailnet mode
+// every write must be JSON from the app's own origin (the attachment upload may be multipart), checked before
+// anything reads the request, and every request needs a household member a parent has linked to a family member.
+async function findLinkedMember(suiteMemberId) {
+  const { rows } = await pool.query('SELECT * FROM family_members WHERE suite_member_id = $1', [suiteMemberId]);
+  return rows[0] || null;
+}
+let suite = createSuiteIdentity(process.env, { findLinked: findLinkedMember });
+app.use((req, res, next) => suite.guard(req, res, next));
+app.use((req, res, next) => suite.requireMember(req, res, next));
 
 app.use(express.json());
 
@@ -339,6 +351,8 @@ app.get('/sovereign-fonts.css', (_req, res) => {
   res.send(buildSovereignFontsCss());
 });
 
+// The link page is served by its route (/link), which checks the directory's role; its file is not a static page.
+app.get('/link.html', (_req, res) => res.redirect(303, 'link'));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -456,19 +470,34 @@ app.get('/api/ready', async (_req, res) => {
   }
 });
 
-app.get('/api/bootstrap', async (_req, res) => {
+// In tailnet mode a parent nobody has linked yet may run first-run setup, so what setup answers them says only
+// whether a household is still needed, nothing about the household's data.
+function unlinkedSetup(req) {
+  return suite.tailnet && !req.familyMember;
+}
+
+app.get('/api/bootstrap', async (req, res) => {
   try {
-    res.json(await bootstrapState());
+    const state = await bootstrapState();
+    if (unlinkedSetup(req)) {
+      return res.set('Cache-Control', 'no-store').json({ app: state.app, bootstrap: { needs_household: state.bootstrap.needs_household } });
+    }
+    res.json(state);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/bootstrap/starter-content', async (_req, res) => {
+app.post('/api/bootstrap/starter-content', async (req, res) => {
   try {
+    // In tailnet mode starter content is first-run setup only: once there is a household, it refuses.
+    if (suite.tailnet && (await memberCount()) > 0) {
+      return res.status(409).json({ error: 'Household already initialized', code: 'household_already_initialized' });
+    }
     if ((await categoryCount()) > 0) {
       return res.status(409).json({ error: 'Starter content already installed', code: 'starter_content_exists' });
     }
     await withPoolTransaction(installStarterContent);
-    res.status(201).json({ ok: true, bootstrap: (await bootstrapState()).bootstrap });
+    const { bootstrap } = await bootstrapState();
+    res.status(201).json({ ok: true, bootstrap: unlinkedSetup(req) ? { needs_household: bootstrap.needs_household } : bootstrap });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -525,6 +554,9 @@ app.post('/api/bootstrap/household', async (req, res) => {
       await issueSettingsSession(req, res);
     }
 
+    if (unlinkedSetup(req)) {
+      return res.status(201).json({ ok: true, created_members: result.members, bootstrap: { needs_household: false } });
+    }
     res.status(201).json({
       ok: true,
       created_members: result.members,
@@ -541,6 +573,73 @@ app.get('/api/members', async (req, res) => {
     const r = await pool.query('SELECT id, name, role, avatar_emoji FROM family_members ORDER BY id');
     res.json(r.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Linking household members (tailnet mode) ─────────────────────────────────
+// A parent, as Home Base's directory says now, links each Family Help member to the household member they are.
+// The directory's role is checked on every request; the local row's role never grants this.
+
+function requireSuiteParent(req, res, next) {
+  if (!suite.tailnet) return res.status(404).json({ error: 'Not found' });
+  if (req.suiteMember?.role !== 'parent') {
+    return res.status(403).json({ error: 'Only a parent can link household members', code: 'parent_required' });
+  }
+  return next();
+}
+
+app.get('/link', (req, res, next) => {
+  if (!suite.tailnet) return next();
+  res.set('Cache-Control', 'no-store');
+  if (req.suiteMember?.role !== 'parent') return res.status(403).type('text').send('Only a parent can link household members.');
+  return res.sendFile(path.join(__dirname, 'public', 'link.html'));
+});
+
+app.get('/api/suite/links', requireSuiteParent, async (req, res) => {
+  try {
+    const directory = suite.directory();
+    if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+    const { rows } = await pool.query('SELECT id, name, role, avatar_emoji, suite_member_id FROM family_members ORDER BY id');
+    res.set('Cache-Control', 'no-store').json({ you: req.suiteMember.memberId, directory, members: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/suite/links/:id', requireSuiteParent, async (req, res) => {
+  try {
+    const id = /^[1-9][0-9]{0,9}$/.test(req.params.id) ? Number(req.params.id) : null;
+    if (!id) return res.status(404).json({ error: 'No such Family Help member', code: 'not_found' });
+    const wanted = req.body?.suite_member_id;
+    let account = null;
+    if (wanted !== null) {
+      const directory = suite.directory();
+      if (!directory) return res.status(503).json({ error: 'The household directory is unavailable', code: 'directory' });
+      account = typeof wanted === 'string' ? directory.find(member => member.memberId === wanted) : null;
+      if (!account) {
+        return res.status(400).json({ error: 'Pick a household member who has access to Family Help', code: 'unknown_member' });
+      }
+    }
+    // A kid's account takes only a kid's row: it would otherwise see and act as a parent. Enforced in the UPDATE, so
+    // no other request can slip in between a check and the write.
+    const kidOnly = account?.role === 'kid';
+    const { rows } = await pool.query(
+      `UPDATE family_members SET suite_member_id = $1 WHERE id = $2${kidOnly ? " AND role = 'kid'" : ''}
+       RETURNING id, name, role, avatar_emoji, suite_member_id`,
+      [wanted, id]
+    );
+    if (!rows.length) {
+      if (kidOnly) {
+        const { rows: found } = await pool.query('SELECT id FROM family_members WHERE id = $1', [id]);
+        if (found.length) return res.status(409).json({ error: 'A kid\'s household account can only be linked to a kid', code: 'kid_to_parent' });
+      }
+      return res.status(404).json({ error: 'No such Family Help member', code: 'not_found' });
+    }
+    console.log(`[suite-link] ${req.suiteMember.memberId} ${wanted ? `linked member ${id} to ${wanted}` : `unlinked member ${id}`}`);
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'That household member is already linked to someone else', code: 'already_linked' });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Categories ──────────────────────────────────────────────────────────────
@@ -1347,4 +1446,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, pool };
+// Tests rebuild the identity with another environment; the middleware above reads `suite` on every request.
+function setSuiteIdentityForTests(env, options) {
+  suite = createSuiteIdentity(env, { findLinked: findLinkedMember, ...options });
+}
+
+module.exports = { app, pool, setSuiteIdentityForTests };

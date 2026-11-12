@@ -17,6 +17,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "pg": "^8.11.5"
+    "pg": "^8.11.5",
+    "sovereign-auth": "github:eforbell/sovereignAuth#0f8bbe9cdab2adab46de0c6eaab33d06dad35c0f"
   }
 }

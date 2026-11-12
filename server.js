@@ -153,7 +153,24 @@ function clearSettingsSession(req, res) {
   res.clearCookie(SETTINGS_SESSION_COOKIE, settingsCookieOptions(req));
 }
 
+// Tailnet mode replaces the settings PIN with the household directory's role, checked on every request: a parent
+// may change settings, a kid may not. The PIN, its secret and any settings session stay as they are, so local mode
+// finds them unchanged.
+function isSuiteParent(req) {
+  return suite.tailnet && req.suiteMember?.role === 'parent';
+}
+
+function localSignInOnly(req, res, next) {
+  if (!suite.tailnet) return next();
+  return res.status(409).set('Cache-Control', 'no-store')
+    .json({ error: 'Family Help knows people by their household account; the settings PIN is for its own sign-in only', code: 'tailnet_mode' });
+}
+
 async function requireSettingsAuth(req, res, next) {
+  if (suite.tailnet) {
+    if (isSuiteParent(req)) return next();
+    return res.status(403).set('Cache-Control', 'no-store').json({ error: 'A parent does that', code: 'parent_only' });
+  }
   try {
     const session = await settingsSessionInfo(req);
     if (!session.configured) return res.status(428).json({ error: 'Settings PIN not set up yet', code: 'pin_not_configured' });
@@ -354,6 +371,22 @@ app.get('/sovereign-fonts.css', (_req, res) => {
 // The link page is served by its route (/link), which checks the directory's role; its file is not a static page.
 app.get('/link.html', (_req, res) => res.redirect(303, 'link'));
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+// In tailnet mode an uploaded file is served only to someone who may see its ticket (a parent, or the kid who filed
+// it or is assigned to it), and only if it is a ticket's attachment. Anyone else, and any other spelling, is told it
+// isn't there. Local mode serves the folder as before.
+app.use('/uploads', async (req, res, next) => {
+  if (!suite.tailnet) return next();
+  try {
+    let filename = null;
+    try { filename = decodeURIComponent(req.path.slice(1)); } catch { filename = null; }
+    const { rows } = filename && !filename.includes('/')
+      ? await pool.query('SELECT ticket_id FROM ticket_attachments WHERE filename = $1', [filename])
+      : { rows: [] };
+    const access = rows.length ? await canMemberViewTicket(req, rows[0].ticket_id) : { ok: false };
+    if (!access.ok) return res.status(404).set('Cache-Control', 'no-store').type('text').send('Not found');
+    return next();
+  } catch (err) { return next(err); }
+});
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 // ── Touch updated_at helper ─────────────────────────────────────────────────
@@ -370,6 +403,19 @@ async function memberById(id) {
   if (!id) return null;
   const r = await pool.query('SELECT id, name, role FROM family_members WHERE id = $1', [id]);
   return r.rows[0] || null;
+}
+
+// Who a request acts as. In tailnet mode that's the requester's own linked member, with the household directory's
+// role read on this request, whatever member ID the page sends; the row's stored role never grants anything. Local
+// mode keeps the picker's choice from the request, as before.
+function requesterId(req, requestedId) {
+  return suite.tailnet ? req.familyMember.id : requestedId;
+}
+
+async function requester(req, requestedId) {
+  if (!suite.tailnet) return memberById(requestedId);
+  const { id, name } = req.familyMember;
+  return { id, name, role: isSuiteParent(req) ? 'parent' : 'kid' };
 }
 
 function maskSecret(secret) {
@@ -413,8 +459,9 @@ async function sendAssignedTicketNotification(ticket, actorName, assigneeId) {
   return true;
 }
 
-async function canMemberViewTicket(ticketId, memberId) {
-  const member = await memberById(memberId);
+async function canMemberViewTicket(req, ticketId, requestedId) {
+  const memberId = requesterId(req, requestedId);
+  const member = await requester(req, memberId);
   if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
   if (member.role === 'parent') return { ok: true, member };
 
@@ -423,8 +470,9 @@ async function canMemberViewTicket(ticketId, memberId) {
   return { ok: true, member };
 }
 
-async function canManageTicketReminders(ticketId, memberId) {
-  const member = await memberById(memberId);
+async function canManageTicketReminders(req, ticketId, requestedId) {
+  const memberId = requesterId(req, requestedId);
+  const member = await requester(req, memberId);
   if (!member) return { ok: false, code: 400, error: 'Valid member_id is required' };
   if (member.role === 'parent') return { ok: true, member };
 
@@ -518,6 +566,10 @@ app.post('/api/bootstrap/household', async (req, res) => {
     if (!members.some(member => member.role === 'parent')) {
       return res.status(400).json({ error: 'At least one parent is required', code: 'parent_required' });
     }
+    // Tailnet mode has no settings PIN to set: a parent, by the directory's role, opens Settings.
+    if (pin && suite.tailnet) {
+      return res.status(409).json({ error: 'Family Help knows people by their household account; it sets no PIN in tailnet mode', code: 'tailnet_mode' });
+    }
     if (pin && pin.length < 4) {
       return res.status(400).json({ error: 'PIN must be at least 4 characters', code: 'invalid_pin' });
     }
@@ -564,6 +616,19 @@ app.post('/api/bootstrap/household', async (req, res) => {
       bootstrap: (await bootstrapState()).bootstrap,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Who am I ────────────────────────────────────────────────────────────────
+
+// Who the pages are showing. In tailnet mode it's the linked member, with the directory's role, and the pages skip
+// their picker (a parent nobody has linked yet is nobody, on the link page or in setup); in local mode there's
+// nobody, and the picker asks.
+app.get('/api/me', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!suite.tailnet) return res.json({ mode: 'local', member: null });
+  if (!req.familyMember) return res.json({ mode: 'tailnet', member: null });
+  const { id, name, avatar_emoji } = req.familyMember;
+  return res.json({ mode: 'tailnet', member: { id, name, avatar_emoji, role: isSuiteParent(req) ? 'parent' : 'kid' } });
 });
 
 // ── Members ─────────────────────────────────────────────────────────────────
@@ -655,9 +720,10 @@ app.get('/api/categories', async (req, res) => {
 
 app.get('/api/tickets', async (req, res) => {
   try {
-    const { status, assigned_to, created_by, category_id, priority, member_id } = req.query;
+    const { status, assigned_to, created_by, category_id, priority } = req.query;
+    const member_id = requesterId(req, req.query.member_id);
     if (!member_id) return res.status(400).json({ error: 'member_id is required' });
-    const member = await memberById(member_id);
+    const member = await requester(req, member_id);
     if (!member) return res.status(400).json({ error: 'Valid member_id is required' });
 
     let sql = `
@@ -696,12 +762,13 @@ app.get('/api/tickets', async (req, res) => {
 
 app.post('/api/tickets', async (req, res) => {
   try {
-    const { title, description, category_id, priority, created_by, assigned_to, link_url } = req.body;
+    const { title, description, category_id, priority, assigned_to, link_url } = req.body;
+    const created_by = requesterId(req, req.body.created_by);
     if (!title || title.trim().length < 10) return res.status(400).json({ error: 'Title must be at least 10 characters' });
     if (!description || description.trim().length < 30) return res.status(400).json({ error: 'Description must be at least 30 characters' });
     if (!created_by) return res.status(400).json({ error: 'created_by is required' });
 
-    const creator = await memberById(created_by);
+    const creator = await requester(req, created_by);
     if (!creator) return res.status(400).json({ error: 'Valid created_by is required' });
 
     const nextAssigneeId = assigned_to || null;
@@ -737,7 +804,7 @@ app.post('/api/tickets', async (req, res) => {
 app.get('/api/tickets/:id', async (req, res) => {
   try {
     const { member_id } = req.query;
-    const access = await canMemberViewTicket(req.params.id, member_id);
+    const access = await canMemberViewTicket(req, req.params.id, member_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const r = await pool.query(`
@@ -761,14 +828,15 @@ app.get('/api/tickets/:id', async (req, res) => {
 app.put('/api/tickets/:id', async (req, res) => {
   try {
     const id = req.params.id;
-    const { status, assigned_to, priority, member_id } = req.body;
+    const { status, assigned_to, priority } = req.body;
+    const member_id = requesterId(req, req.body.member_id);
     if (!member_id) return res.status(400).json({ error: 'member_id is required' });
 
     // Fetch current ticket
     const cur = await pool.query('SELECT * FROM tickets WHERE id=$1', [id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'Ticket not found' });
     const ticket = cur.rows[0];
-    const actor = await memberById(member_id);
+    const actor = await requester(req, member_id);
     if (!actor) return res.status(400).json({ error: 'Valid member_id is required' });
     if (actor.role === 'kid' && String(ticket.created_by) !== String(member_id) && String(ticket.assigned_to) !== String(member_id)) {
       return res.status(403).json({ error: 'Not authorized for this ticket' });
@@ -851,7 +919,7 @@ app.put('/api/tickets/:id', async (req, res) => {
 app.post('/api/tickets/:id/snooze', async (req, res) => {
   try {
     const { member_id, until } = req.body || {};
-    const access = await canManageTicketReminders(req.params.id, member_id);
+    const access = await canManageTicketReminders(req, req.params.id, member_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     if (!until) return res.status(400).json({ error: 'until is required' });
@@ -882,7 +950,7 @@ app.post('/api/tickets/:id/snooze', async (req, res) => {
 app.delete('/api/tickets/:id/snooze', async (req, res) => {
   try {
     const { member_id } = req.body || {};
-    const access = await canManageTicketReminders(req.params.id, member_id);
+    const access = await canManageTicketReminders(req, req.params.id, member_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const ticketRow = await pool.query('SELECT updated_at FROM tickets WHERE id = $1', [req.params.id]);
@@ -910,7 +978,7 @@ app.delete('/api/tickets/:id/snooze', async (req, res) => {
 app.get('/api/tickets/:id/comments', async (req, res) => {
   try {
     const { member_id } = req.query;
-    const access = await canMemberViewTicket(req.params.id, member_id);
+    const access = await canMemberViewTicket(req, req.params.id, member_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const r = await pool.query(`
@@ -926,10 +994,11 @@ app.get('/api/tickets/:id/comments', async (req, res) => {
 
 app.post('/api/tickets/:id/comments', async (req, res) => {
   try {
-    const { body, author_id } = req.body;
+    const { body } = req.body;
+    const author_id = requesterId(req, req.body.author_id);
     if (!body || body.trim().length < 10) return res.status(400).json({ error: 'Comment must be at least 10 characters' });
     if (!author_id) return res.status(400).json({ error: 'author_id is required' });
-    const access = await canMemberViewTicket(req.params.id, author_id);
+    const access = await canMemberViewTicket(req, req.params.id, author_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const r = await pool.query(
@@ -945,8 +1014,9 @@ app.post('/api/tickets/:id/comments', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
   try {
-    const { member_id } = req.query;
-    const isKid = member_id ? (await pool.query('SELECT role FROM family_members WHERE id=$1', [member_id])).rows[0]?.role === 'kid' : false;
+    const member_id = requesterId(req, req.query.member_id);
+    const isKid = suite.tailnet ? !isSuiteParent(req)
+      : member_id ? (await pool.query('SELECT role FROM family_members WHERE id=$1', [member_id])).rows[0]?.role === 'kid' : false;
 
     let filter = '';
     const params = [];
@@ -972,13 +1042,15 @@ app.get('/api/stats', async (req, res) => {
 // ── Settings auth routes ────────────────────────────────────────────────────
 
 app.get('/api/settings/status', async (req, res) => {
+  // Tailnet mode: no PIN to ask for; a parent is in, by the directory's role.
+  if (suite.tailnet) return res.set('Cache-Control', 'no-store').json({ configured: true, unlocked: isSuiteParent(req), tailnet: true });
   try {
     const session = await settingsSessionInfo(req);
     res.json(session);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/settings/setup-pin', async (req, res) => {
+app.post('/api/settings/setup-pin', localSignInOnly, async (req, res) => {
   try {
     const configured = await settingsPinConfigured();
     if (configured) return res.status(409).json({ error: 'PIN already configured' });
@@ -993,7 +1065,7 @@ app.post('/api/settings/setup-pin', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/settings/unlock', async (req, res) => {
+app.post('/api/settings/unlock', localSignInOnly, async (req, res) => {
   try {
     const pin = String(req.body.pin || '').trim();
     const encoded = await cfg('settings_pin_hash');
@@ -1004,7 +1076,7 @@ app.post('/api/settings/unlock', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/settings/lock', (req, res) => {
+app.post('/api/settings/lock', localSignInOnly, (req, res) => {
   clearSettingsSession(req, res);
   res.json({ ok: true });
 });
@@ -1201,7 +1273,7 @@ async function tryAutoMagicHelp(ticket) {
 app.post('/api/tickets/:id/magic-help', async (req, res) => {
   try {
     const memberId = req.body?.member_id;
-    const access = await canMemberViewTicket(req.params.id, memberId);
+    const access = await canMemberViewTicket(req, req.params.id, memberId);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
@@ -1232,7 +1304,7 @@ app.post('/api/tickets/:id/magic-help', async (req, res) => {
 app.post('/api/tickets/:id/magic-help-followup', async (req, res) => {
   try {
     const memberId = req.body?.member_id;
-    const access = await canMemberViewTicket(req.params.id, memberId);
+    const access = await canMemberViewTicket(req, req.params.id, memberId);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     if (!hasOpenAI()) return res.status(503).json({ error: 'OpenAI API key not configured' });
@@ -1265,7 +1337,7 @@ app.post('/api/tickets/:id/magic-help-followup', async (req, res) => {
 app.post('/api/tickets/:id/magic-help-feedback', async (req, res) => {
   try {
     const memberId = req.body?.member_id;
-    const access = await canMemberViewTicket(req.params.id, memberId);
+    const access = await canMemberViewTicket(req, req.params.id, memberId);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const { helped } = req.body;
@@ -1343,11 +1415,11 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
   try {
     const parts = await parseMultipart(req);
     const file = parts.file;
-    const uploadedBy = parts.uploaded_by;
+    const uploadedBy = requesterId(req, parts.uploaded_by);
 
     if (!file || !file.data || !file.data.length) return res.status(400).json({ error: 'No file provided' });
     if (!uploadedBy) return res.status(400).json({ error: 'uploaded_by is required' });
-    const access = await canMemberViewTicket(req.params.id, uploadedBy);
+    const access = await canMemberViewTicket(req, req.params.id, uploadedBy);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
     if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, GIF, or PDF.` });
     if (file.data.length > MAX_FILE_SIZE) return res.status(400).json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` });
@@ -1380,7 +1452,7 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
 app.get('/api/tickets/:id/attachments', async (req, res) => {
   try {
     const { member_id } = req.query;
-    const access = await canMemberViewTicket(req.params.id, member_id);
+    const access = await canMemberViewTicket(req, req.params.id, member_id);
     if (!access.ok) return res.status(access.code).json({ error: access.error });
 
     const r = await pool.query(`
@@ -1396,8 +1468,8 @@ app.get('/api/tickets/:id/attachments', async (req, res) => {
 
 app.delete('/api/attachments/:id', async (req, res) => {
   try {
-    const memberId = req.query.member_id;
-    const actor = await memberById(memberId);
+    const memberId = requesterId(req, req.query.member_id);
+    const actor = await requester(req, memberId);
     if (!actor) return res.status(400).json({ error: 'Valid member_id is required' });
     if (actor.role !== 'parent') return res.status(403).json({ error: 'Only parents can remove attachments' });
 

@@ -41,6 +41,29 @@ const SETTINGS_SESSION_MINUTES = 480; // 8 hours
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']);
+// An attachment is stored under the extension of the type it really is, never the one its name claims: a file named
+// .html and declared an image would otherwise be served as a page on this app's own address, where its script would
+// act as whoever opened it. The type is the one the file's first bytes show, and must be the one declared.
+const UPLOAD_EXTENSIONS = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'application/pdf': '.pdf' };
+function sniffUploadType(data) {
+  const starts = (bytes, at = 0) => data.length >= at + bytes.length && bytes.every((byte, i) => data[at + i] === byte);
+  if (starts([0xff, 0xd8, 0xff])) return 'image/jpeg';
+  if (starts([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png';
+  if (starts([0x47, 0x49, 0x46, 0x38])) return 'image/gif';
+  if (starts([0x52, 0x49, 0x46, 0x46]) && starts([0x57, 0x45, 0x42, 0x50], 8)) return 'image/webp';
+  if (starts([0x25, 0x50, 0x44, 0x46, 0x2d])) return 'application/pdf';
+  return null;
+}
+// Files stored before that rule keep whatever extension their name had. Only the known types are shown in the
+// browser; anything else is handed over as a download, and nothing is ever guessed from its content.
+const INLINE_UPLOAD = /\.(?:jpe?g|png|webp|gif|pdf)$/;
+function uploadHeaders(res, filePath) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (!INLINE_UPLOAD.test(path.basename(filePath))) {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment');
+  }
+}
 
 // Ensure uploads dir exists
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -387,7 +410,7 @@ app.use('/uploads', async (req, res, next) => {
     return next();
   } catch (err) { return next(err); }
 });
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR, { setHeaders: uploadHeaders }));
 
 // ── Touch updated_at helper ─────────────────────────────────────────────────
 
@@ -1423,12 +1446,13 @@ app.post('/api/tickets/:id/attachments', async (req, res) => {
     if (!access.ok) return res.status(access.code).json({ error: access.error });
     if (!ALLOWED_MIME.has(file.type)) return res.status(400).json({ error: `File type ${file.type} not allowed. Use JPG, PNG, WebP, GIF, or PDF.` });
     if (file.data.length > MAX_FILE_SIZE) return res.status(400).json({ error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)` });
+    if (sniffUploadType(file.data) !== file.type) return res.status(400).json({ error: 'That file isn\'t the JPG, PNG, WebP, GIF or PDF it says it is.' });
 
     // Verify ticket exists
     const t = await pool.query('SELECT id FROM tickets WHERE id=$1', [req.params.id]);
     if (!t.rows.length) return res.status(404).json({ error: 'Ticket not found' });
 
-    const ext = path.extname(file.filename).toLowerCase() || '.bin';
+    const ext = UPLOAD_EXTENSIONS[file.type];
     const uuid = crypto.randomUUID();
     const filename = uuid + ext;
     const filePath = path.join(UPLOADS_DIR, filename);

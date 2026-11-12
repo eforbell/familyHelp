@@ -85,7 +85,8 @@ npm start
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `DATABASE_URL` | Yes | -- | PostgreSQL connection string |
-| `PORT` | No | 3002 | HTTP port |
+| `PORT` | No | 3002 | HTTP port, on loopback (`HOST` to override) |
+| `SOVEREIGN_LISTEN` | No | -- | Under Home Base, `unix:/path/app.sock`: listen on that Unix socket instead of TCP. Set at all, even blank, it must name a socket |
 | `SETTINGS_PIN` | No | -- | Bootstrap admin PIN on first run |
 | `OPENAI_API_KEY` | No | -- | Enables MagicHelp AI |
 | `OPENAI_MODEL` | No | gpt-4o-mini | Any OpenAI chat model |
